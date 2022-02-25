@@ -1,0 +1,28 @@
+version: "2.3"
+
+
+services:
+  ble:
+    build: .
+    volumes:
+      - ./:/root
+# device, bluetooth
+      - /dev:/dev
+      - /sys/devices:/sys/devices
+      - /var/lib/bluetooth:/var/lib/bluetooth
+      - /run/dbus:/run/dbus
+      - /var/run/dbus:/var/run/dbus
+# for systemctl
+      - /bin/systemctl:/bin/systemctl
+      - /run/systemd/system:/run/systemd/system
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+      - /sys/fs/cgroup:/sys/fs/cgroup
+# required for display, device, and systemctl
+    privileged: true
+# device, bluetooth
+    devices:
+      - /dev/dri
+# device, bluetooth
+    network_mode: host
+    working_dir: /root
+    command: ./cabot_ble.py
