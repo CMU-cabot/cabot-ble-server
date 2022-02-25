@@ -18,7 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import rospy
 from enum import Enum
 from threading import Lock
 
@@ -68,7 +67,6 @@ class StatusManager(object):
         return self._current
 
     def set_state(self, state):
-        rospy.loginfo("NavigationState: changing from {} to {}".format(self._current, state))
         self._current = state
         
     

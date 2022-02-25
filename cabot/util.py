@@ -26,7 +26,6 @@ Author: Daisuke Sato <daisukes@cmu.edu>
 
 import sys
 import traceback
-import rospy
 
 def callee_name():
     return sys._getframe().f_back.f_code.co_name
@@ -78,7 +77,7 @@ def setInterval(interval, times=-1):
                     try:
                         function(*args, **kwargs)
                     except:
-                        rospy.logerr(traceback.format_exc())
+                        print(traceback.format_exc())
                 stop.set()
 
             timer = threading.Timer(0, inner_wrap)
