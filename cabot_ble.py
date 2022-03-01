@@ -37,9 +37,6 @@ import roslibpy
 from cabot import util
 from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
-#import std_msgs.msg
-#import cabot_msgs.srv
-#import faceapp_msgs.srv
 
 client = roslibpy.Ros(host='localhost', port=9090)
 connected = False
@@ -63,8 +60,8 @@ polling_ros()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-#logger.setLevel(logging.INFO)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
+#logger.setLevel(logging.DEBUG)
 
 
 ### Debug
@@ -108,7 +105,6 @@ class CaBotBLE:
         self.last_heartbeat = time.time()
 
         # speak
-        #rospy.Service("/speak", cabot_msgs.srv.Speak, self.handleSpeak)
         self.alive = False
         self.ready = False
 
@@ -224,12 +220,15 @@ class CaBotBLE:
         if not self.ready:
             return None
 
-        if req.force:
-            req.text = "__force_stop__\n" + req.text
+        text = req['text']
+        force = req['force']
 
-        self.call_async(self.speak_uuid, req.text)
+        if force:
+            text = "__force_stop__\n" + text
 
-        return cabot_msgs.srv.SpeakResponse(True)
+        self.call_async(self.speak_uuid, text)
+
+        return True
 
 
     def _event_callback(self, msg):
@@ -313,15 +312,15 @@ class AnyDeviceManager(gatt.DeviceManager, object):
         self.name = "CaBot" + ("-" + name if name is not None else "")
         print("name: " + self.name)
         self.bles = {}
-        #rospy.Service("/speak", cabot_msgs.srv.Speak, self.handleSpeak)
+        self.service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
+        self.service.advertise(self.handleSpeak)
 
-    def handleSpeak(self, req):
-        ret = cabot_msgs.srv.SpeakResponse(False)
+    def handleSpeak(self, req, res):
+        logger.info("/speak request (%s)"%(str(req)))
         for ble in self.bles.values():
-            temp = ble.handleSpeak(req=req)
-            if temp:
-                ret = temp
-        return ret
+            ble.handleSpeak(req=req)
+        res['result'] = True
+        return True
 
     def on_terminate(self, bledev):
         print("terminate {}".format(bledev.address))
