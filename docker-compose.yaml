@@ -17,6 +17,8 @@ services:
       - /run/systemd/system:/run/systemd/system
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
       - /sys/fs/cgroup:/sys/fs/cgroup
+    environment:
+      - CABOT_NAME
 # required for display, device, and systemctl
     privileged: true
 # device, bluetooth

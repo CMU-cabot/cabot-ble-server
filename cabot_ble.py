@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import os
 import time
 import json
 import threading
@@ -307,10 +308,10 @@ class AnyDevice(gatt.Device,object):
                 print("[%s]    Characteristic [%s]" % (self.mac_address, characteristic.uuid))
 
 class AnyDeviceManager(gatt.DeviceManager, object):
-    def __init__(self, adapter_name, team=None):
+    def __init__(self, adapter_name, name=None):
         super(AnyDeviceManager, self).__init__(adapter_name = adapter_name)
-        self.team = "CaBot" + ("-" + team if team is not None else "")
-        print("team: " + self.team)
+        self.name = "CaBot" + ("-" + name if name is not None else "")
+        print("name: " + self.name)
         self.bles = {}
         #rospy.Service("/speak", cabot_msgs.srv.Speak, self.handleSpeak)
 
@@ -330,7 +331,7 @@ class AnyDeviceManager(gatt.DeviceManager, object):
         return AnyDevice(mac_address=mac_address, manager=self)
 
     def device_discovered(self, device):
-        if device.alias() == self.team:#"CaBot":
+        if device.alias() == self.name:
             if not device.mac_address in self.bles.keys():
                 for service in device.services:
                     print("[%s]  Service [%s]" % (device.mac_address, service.uuid))
@@ -345,25 +346,19 @@ class AnyDeviceManager(gatt.DeviceManager, object):
 
 
 if __name__ == "__main__":
-    #rospy.init_node("cabot_ble_node")
-    
-    #team = rospy.get_param("~team", None)
-    #adapter_name = rospy.get_param("~adapter", "hci0")
-
-    team = "gt1"
+    name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
+    print(name)
     adapter_name = "hci0"
 
-    manager = AnyDeviceManager(adapter_name=adapter_name, team=team)
+    manager = AnyDeviceManager(adapter_name=adapter_name, name=name)
 
     # power on the adapter
     if not manager.is_adapter_powered:
         manager.is_adapter_powered = True
 
-    #logger.info("start_discovery")
     manager.start_discovery(service_uuids=["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
 
     try:
-        #logger.info("manager.run")
         manager.run()
     except:
         print(traceback.format_exc())
@@ -372,5 +367,3 @@ if __name__ == "__main__":
         manager.stop()
         manager._main_loop.quit()
         client.terminate()
-
-    #rospy.spin()
