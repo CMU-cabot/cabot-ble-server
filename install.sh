@@ -12,7 +12,15 @@ scriptdir=`pwd`
 
 ## install cabot-ble-server
 INSTALL_DIR=/opt/cabot-ble-server
-INSTALL_FILE="Dockerfile docker-compose.yaml cabot_ble.py cabot cabot_ui requirements.txt"
+read -r -d '' INSTALL_FILE <<EOF
+cabot
+cabot_ui
+cabot_ble.py
+Dockerfile
+docker-compose.yaml
+requirements.txt
+.env
+EOF
 
 mkdir -p $INSTALL_DIR
 cp -r $INSTALL_FILE $INSTALL_DIR
