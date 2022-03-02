@@ -26,6 +26,7 @@ import json
 import threading
 import traceback
 import logging
+import subprocess
 
 from uuid import UUID
 
@@ -38,7 +39,7 @@ from cabot import util
 from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 
-client = roslibpy.Ros(host='localhost', port=9090)
+client = roslibpy.Ros(host='localhost', port=9091)
 connected = False
 @util.setInterval(1.0)
 def polling_ros():
@@ -314,6 +315,28 @@ class AnyDeviceManager(gatt.DeviceManager, object):
         self.bles = {}
         self.service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
         self.service.advertise(self.handleSpeak)
+
+        self.service = roslibpy.Service(client, '/restart', 'std_srvs/Trigger')
+        self.service.advertise(self.handleRestart)
+        self.service = roslibpy.Service(client, '/reboot', 'std_srvs/Trigger')
+        self.service.advertise(self.handleReboot)
+        self.service = roslibpy.Service(client, '/poweroff', 'std_srvs/Trigger')
+        self.service.advertise(self.handlePoweroff)
+
+    def handleRestart(self, req, res):
+        subprocess.call(["systemctl", "--user", "restart", "cabot"])
+        res['success']=True
+        return True
+
+    def handleReboot(self, req, res):
+        subprocess.call(["sudo", "systemctl", "reboot"])
+        res['success']=True
+        return True
+
+    def handlePoweroff(self, req, res):
+        subprocess.call(["sudo", "systemctl", "poweroff"])
+        res['success']=True
+        return True
 
     def handleSpeak(self, req, res):
         logger.info("/speak request (%s)"%(str(req)))

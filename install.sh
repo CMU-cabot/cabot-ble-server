@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [ $(id -u) -ne 0 ]; then
-   echo "please run as root: sudo $0"
+if [ $(id -u) -eq 0 ]; then
+   echo "please do not run as root: $0"
    exit
 fi
 
@@ -11,25 +11,11 @@ cd $scriptdir
 scriptdir=`pwd`
 
 ## install cabot-ble-server
-INSTALL_DIR=/opt/cabot-ble-server
-read -r -d '' INSTALL_FILE <<EOF
-cabot
-cabot_ui
-cabot_ble.py
-Dockerfile
-docker-compose.yaml
-requirements.txt
-.env
-EOF
-
-mkdir -p $INSTALL_DIR
-cp -r $INSTALL_FILE $INSTALL_DIR
-cd $INSTALL_DIR
-docker-compose build
-
+sudo ln -sf $scriptdir /opt/cabot-ble-server
+docker-compose build --build-arg UID=$(id -u)
 
 ## install cabot-ble-server.service
-cd $scriptdir
-cp cabot-ble-server.service /etc/systemd/system
-systemctl daemon-reload
-systemctl enable --now cabot-ble-server
+INSTALL_DIR=$HOME/.config/systemd/user
+cp $scriptdir/cabot-ble-server.service $INSTALL_DIR
+systemctl --user daemon-reload
+systemctl --user enable --now cabot-ble-server

@@ -5,7 +5,6 @@ services:
   ble:
     build: .
     volumes:
-      - ./:/root
 # device, bluetooth
       - /dev:/dev
       - /sys/devices:/sys/devices
@@ -13,10 +12,11 @@ services:
       - /run/dbus:/run/dbus
       - /var/run/dbus:/var/run/dbus
 # for systemctl
-      - /bin/systemctl:/bin/systemctl
       - /run/systemd/system:/run/systemd/system
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
       - /sys/fs/cgroup:/sys/fs/cgroup
+# for systemctl --user
+      - /run/user:/run/user
     environment:
       - CABOT_NAME
 # required for display, device, and systemctl
@@ -26,5 +26,4 @@ services:
       - /dev/dri
 # device, bluetooth
     network_mode: host
-    working_dir: /root
     command: ./cabot_ble.py

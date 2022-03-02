@@ -4,7 +4,6 @@ Description = CaBot BLE Server
 [Service]
 ExecStart = docker-compose up ble
 Restart = always
-User = root
 WorkingDirectory = /opt/cabot-ble-server
 Type = simple
 
