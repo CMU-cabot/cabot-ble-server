@@ -39,34 +39,35 @@ from cabot import util
 from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 
+DEBUG=False
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
+
 client = roslibpy.Ros(host='localhost', port=9091)
-connected = False
+ROS_CLIENT_CONNECTED = [False]
+
 @util.setInterval(1.0)
 def polling_ros():
-    global connected
     if not client.is_connected:
-        if connected:
-            logger.info("ROS bridge is not connected")
-            connected = False
+        if ROS_CLIENT_CONNECTED[0]:
+            logger.info("ROS bridge has been disconnected")
+            ROS_CLIENT_CONNECTED[0] = False
 
         logger.debug("polling")
         try:
             client.run(1.0)
             logger.info("ROS bridge is connected")
-            connected = True
-        except:
+            ROS_CLIENT_CONNECTED[0] = True
+        except Exception:
+            # except Failed to connect to ROS
             pass
 
 polling_ros()
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-#logger.setLevel(logging.DEBUG)
-
-
 ### Debug
-if False:
+if DEBUG:
     from logging import StreamHandler, Formatter
 
     stream_handler = StreamHandler()
@@ -368,11 +369,10 @@ class AnyDeviceManager(gatt.DeviceManager, object):
 
 
 if __name__ == "__main__":
-    name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
-    print(name)
-    adapter_name = "hci0"
+    cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
+    adapter_name = os.environ['CABOT_BLE_ADAPTOR'] if 'CABOT_BLE_ADAPTOR' in os.environ else "hci0"
 
-    manager = AnyDeviceManager(adapter_name=adapter_name, name=name)
+    manager = AnyDeviceManager(adapter_name=adapter_name, name=cabot_name)
 
     # power on the adapter
     if not manager.is_adapter_powered:
