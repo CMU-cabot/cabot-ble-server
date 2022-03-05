@@ -39,6 +39,8 @@ from cabot import util
 from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 
+CABOT_BLE_UUID = lambda _id: UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".format(_id))
+CABOT_BLE_VERSION = "1"
 DEBUG=False
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -67,40 +69,127 @@ def polling_ros():
 polling_ros()
 
 ### Debug
-if DEBUG:
+def set_debug_mode():
     from logging import StreamHandler, Formatter
 
-    stream_handler = StreamHandler()
-    handler_format = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    stream_handler.setFormatter(handler_format)
-    stream_handler.setLevel(logging.DEBUG)
-
     for key in logging.Logger.manager.loggerDict:
-        logger = logging.Logger.manager.loggerDict[key]
+        #for key in ["pygatt.device"]:
         try:
-            logger.setLevel(logging.DEBUG)
-            logger.addHandler(stream_handler)
+            logging.Logger.manager.loggerDict[key].setLevel(logging.DEBUG)
         except:
             pass
 
+if DEBUG:
+    set_debug_mode()
+
+
+class BLECharacteristic:
+    def __init__(self, owner, uuid, indication=False):
+        self.owner = owner
+        self.uuid = uuid
+        self.indication = indication
+        self.valid = False
+
+    def callback(self, handle, value):
+        raise RuntimeError("callback is not implemented")
+
+    def not_found(self):
+        pass
+
+    def subscribe_to(self, target):
+        try:
+            target.subscribe(self.uuid, self.callback, indication=self.indication)
+            self.valid = True
+        except pygatt.exceptions.BLEError:
+            logger.info("could not connect to char %s", self.uuid)
+
+
+class VersionChar(BLECharacteristic):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def callback(self, handle, value):
+        version = value.decode("utf-8")
+        if version != CABOT_BLE_VERSION:
+            logger.error("BLE Version mismatch %s != %s", CABOT_BLE_VERSION, value)
+        else:
+            logger.info("BLE Version matched %s", version)
+
+    def not_found(self):
+        logger.error("version number is not implemented")
+
+class SystemctlChar(BLECharacteristic):
+    def __init__(self, owner, uuid, command):
+        super().__init__(owner, uuid)
+        self.command = command
+
+    def callback(self, handle, value):
+        subprocess.call(self.command)
+
+    def not_found(self):
+        logger.error("%s is not implemented", " ".join(self.command))
+
+class DestinationChar(BLECharacteristic):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def callback(self, handle, value):
+        value = value.decode("utf-8")
+        logger.info("destination_callback %s", value)
+
+        if value == "__cancel__":
+            logger.info("cancel navigation")
+            event = NavigationEvent(subtype="cancel", param=None)
+            self.owner.event_topic.publish(roslibpy.Message({'data': str(event)}))
+            return
+
+        logger.info("destination: %s", value)
+        event = NavigationEvent(subtype="destination", param=value)
+        self.owner.event_topic.publish(roslibpy.Message({'data': str(event)}))
+
+class SummonsChar(BLECharacteristic):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def callback(self, handle, value):
+        value = value.decode("utf-8")
+        logger.info("summons_callback %s", value)
+        event = NavigationEvent(subtype="summons", param=value)
+        self.owner.event_topic.publish(roslibpy.Message({'data': str(event)}))
+
+class HeartbeatChar(BLECharacteristic):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def callback(self, handle, value):
+        value = value.decode("utf-8")
+        logger.info("heartbeat(%s):%s", self.owner.address, value)
+        self.owner.last_heartbeat = time.time()
+
 
 class CaBotBLE:
-    UUID_FORMAT = "35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1"
 
-    def __init__(self, address, mgr):
+    def __init__(self, address, manager):
         self.address = address
-        self.mgr = mgr
-        self.summon_uuid = UUID(CaBotBLE.UUID_FORMAT.format(0x09))
-        self.dest_uuid = UUID(CaBotBLE.UUID_FORMAT.format(0x10))
-        self.speak_uuid = UUID(CaBotBLE.UUID_FORMAT.format(0x200))
-        self.navi_uuid = UUID(CaBotBLE.UUID_FORMAT.format(0x300))
-        self.content_uuid = UUID(CaBotBLE.UUID_FORMAT.format(0x400))
-        self.sound_uuid = UUID(CaBotBLE.UUID_FORMAT.format(0x500))
-        self.heartbeat_uuid = UUID(CaBotBLE.UUID_FORMAT.format(0x9999))
+        self.manager = manager
+        self.chars = []
+
+        self.chars.append(VersionChar(self, CABOT_BLE_UUID(0x00)))
+        self.chars.append(SystemctlChar(self, CABOT_BLE_UUID(0x1000), ["sudo", "systemctl", "reboot"]))
+        self.chars.append(SystemctlChar(self, CABOT_BLE_UUID(0x1001), ["sudo", "systemctl", "poweroff"]))
+        self.chars.append(SystemctlChar(self, CABOT_BLE_UUID(0x1002), ["systemctl", "--user", "restart", "cabot"]))
+        self.chars.append(SummonsChar(self, CABOT_BLE_UUID(0x09)))
+        self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x10)))
+        self.chars.append(HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
+
+        self.speak_uuid = CABOT_BLE_UUID(0x200)
+        self.navi_uuid = CABOT_BLE_UUID(0x300)
+        self.content_uuid = CABOT_BLE_UUID(0x400)
+        self.sound_uuid = CABOT_BLE_UUID(0x500)
         self.data_buffer = {}
 
-        self.eventTopic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
-        self.eventTopic.subscribe(self._event_callback)
+        self.event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+        self.event_topic.subscribe(self._event_callback)
 
         self.adapter = pygatt.GATTToolBackend()
         self.target = None
@@ -112,96 +201,59 @@ class CaBotBLE:
 
     def start(self):
         self.alive = True
-        self.start_time = time.time()
+        start_time = time.time()
         try:
-            while time.time() - self.start_time < 60*10 and self.alive:
+            # if the device is disconnected and it already past 10 minutes then start over from scanning BLE MAC address
+            # because iOS change MAC address pediodically
+            while time.time() - start_time < 60*10 and self.alive:
                 self.adapter.start(reset_on_start=False)
-                target = None
+                self.target = None
 
                 try:
-                    logger.info("trying to connect to %s" % (self.address))
-                    target = self.adapter.connect(self.address, timeout=15, address_type=pygatt.BLEAddressType.random)
-                    target.exchange_mtu(64)
+                    logger.info("trying to connect to %s", self.address)
+                    self.target = self.adapter.connect(self.address, timeout=15, address_type=pygatt.BLEAddressType.random)
+                    self.target.exchange_mtu(64)
                 except pygatt.exceptions.NotConnectedError:
-                    logger.error("device not connected %s" % (self.address))
+                    logger.error("device not connected %s", self.address)
+                    break
                 except pygatt.exceptions.NotificationTimeout:
-                    logger.error("setting exchange_mtu failed %s" % (self.address))
-                    target = None
+                    logger.error("setting exchange_mtu failed %s", self.address)
+                    self.target = None
+                    break
 
-                if target is not None:
-                    try:
-                        self.target = target
+                # discover characteristics once to reduce waiting time if characteristics is not provided by the target
+                target_chars = self.target.discover_characteristics()
+                for char in self.chars:
+                    if target_chars.get(char.uuid):
+                        char.subscribe_to(self.target)
+                    else:
+                        char.not_found()
+                self.ready = True
 
-                        try:
-                            self.target.subscribe(self.dest_uuid, self.destination_callback, indication=False)
-                            logger.info("subscribed to destination %s" % (self.address))
-                        except:
-                            logger.info("could not connect to destination %s" % (self.address))
-                            return
+                # wait while heart beat is valid
+                self.last_heartbeat = time.time()
+                timeout = 3.0
+                while time.time() - self.last_heartbeat < timeout and self.alive:
+                    if time.time() - self.last_heartbeat > timeout/2.0:
+                        logger.info("No heartbeat, reconnecting in %.1f seconds %s", timeout - (time.time() - self.last_heartbeat), self.address)
+                    time.sleep(0.5)
+                self.ready = False
 
-                        try:
-                            self.target.subscribe(self.summon_uuid, self.summons_callback, indication=False)
-                            logger.info("subscribed to summons %s" % (self.address))
-                        except:
-                            logger.info("could not connect to destination %s" % (self.address))
-                            return
-
-                        try:
-                            self.target.subscribe(self.heartbeat_uuid, self.heartbeat_callback, indication=False)
-                            logger.info("subscribed to heartbeat %s" % (self.address))
-                        except:
-                            logger.info("could not connect to hertbeat %s" % (self.address))
-                            return
-
-                        self.ready = True
-
-                        self.last_heartbeat = time.time()
-                        timeout = 5.0
-                        while time.time() - self.last_heartbeat < timeout and self.alive:
-                            if time.time() - self.last_heartbeat > timeout/2.0:
-                                logger.info(
-                                    "Reconnecting in %.1f seconds %s" % (timeout - (time.time() - self.last_heartbeat), self.address))
-                            time.sleep(0.5)
-                    except pygatt.exceptions.BLEError:
-                        logger.info("device disconnected")
+        except pygatt.exceptions.BLEError:
+            logger.info("device disconnected")
         except:
             logger.error(traceback.format_exc())
         finally:
             self.stop()
-            self.mgr.on_terminate(self)
+            self.manager.on_terminate(self)
 
     def buffered_callback(self, handle, value):
         buf = self.data_buffer[handle]
-
         if value[-1] == ord('\n'):
             result = json.loads(str(buf + value[:-1]))
             # TODO
         else:
             self.data_buffer[handle] = buf + value
-
-    def destination_callback(self, handle, value):
-        value = value.decode("utf-8")
-        logger.info("destination_callback {}".format(value))
-
-        if value == "__cancel__":
-            logger.info("cancel navigation")
-            event = NavigationEvent(subtype="cancel", param=None)
-            self.eventTopic.publish(roslibpy.Message({'data': str(event)}))
-            return
-
-        logger.info("destination: " + value)
-        event = NavigationEvent(subtype="destination", param=value)
-        self.eventTopic.publish(roslibpy.Message({'data': str(event)}))
-
-    def summons_callback(self, handle, value):
-        value = value.decode("utf-8")
-        logger.info("summons_callback {}".format(value))
-        event = NavigationEvent(subtype="summons", param=value)
-        self.eventTopic.publish(roslibpy.Message({'data': str(event)}))
-
-    def heartbeat_callback(self, handle, value):
-        #logger.info(("heartbeat(%s):" % self.address) +  str(value))
-        self.last_heartbeat = time.time()
 
     def req_stop(self):
         self.alive = False
@@ -215,23 +267,17 @@ class CaBotBLE:
             except pygatt.exceptions.BLEError:
                 #device is already closed #logger.info("device disconnected")
                 pass
-
         self.adapter.stop()
 
     def handleSpeak(self, req):
         if not self.ready:
             return None
-
         text = req['text']
         force = req['force']
-
         if force:
             text = "__force_stop__\n" + text
-
         self.call_async(self.speak_uuid, text)
-
         return True
-
 
     def _event_callback(self, msg):
         event = BaseEvent.parse(msg['data'])
@@ -270,95 +316,33 @@ class CaBotBLE:
                 return
 
 
-class AnyDevice(gatt.Device,object):
-    """
-    An implementation of ``gatt.Device`` that connects to any GATT device
-    and prints all services and characteristics.
-    """
-
-    def __init__(self, mac_address, manager, auto_reconnect=False):
-        super(AnyDevice,self).__init__(mac_address=mac_address, manager=manager)
-        self.auto_reconnect = auto_reconnect
-
-    def connect(self):
-        print("Connecting...")
-        super(AnyDevice,self).connect()
-
-    def connect_succeeded(self):
-        super(AnyDevice,self).connect_succeeded()
-        print("[%s] Connected" % (self.mac_address))
-
-    def connect_failed(self, error):
-        super(AnyDevice,self).connect_failed(error)
-        print("[%s] Connection failed: %s" % (self.mac_address, str(error)))
-
-    def disconnect_succeeded(self):
-        super(AnyDevice,self).disconnect_succeeded()
-
-        print("[%s] Disconnected" % (self.mac_address))
-        if self.auto_reconnect:
-            self.connect()
-
-    def services_resolved(self):
-        super(AnyDevice,self).services_resolved()
-
-        print("[%s] Resolved services" % (self.mac_address))
-        for service in self.services:
-            print("[%s]  Service [%s]" % (self.mac_address, service.uuid))
-            for characteristic in service.characteristics:
-                print("[%s]    Characteristic [%s]" % (self.mac_address, characteristic.uuid))
-
 class AnyDeviceManager(gatt.DeviceManager, object):
     def __init__(self, adapter_name, name=None):
-        super(AnyDeviceManager, self).__init__(adapter_name = adapter_name)
+        super().__init__(adapter_name = adapter_name)
         self.name = "CaBot" + ("-" + name if name is not None else "")
-        print("name: " + self.name)
+        logger.info("name: %s", self.name)
         self.bles = {}
         self.service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
         self.service.advertise(self.handleSpeak)
 
-        self.service = roslibpy.Service(client, '/restart', 'std_srvs/Trigger')
-        self.service.advertise(self.handleRestart)
-        self.service = roslibpy.Service(client, '/reboot', 'std_srvs/Trigger')
-        self.service.advertise(self.handleReboot)
-        self.service = roslibpy.Service(client, '/poweroff', 'std_srvs/Trigger')
-        self.service.advertise(self.handlePoweroff)
-
-    def handleRestart(self, req, res):
-        subprocess.call(["systemctl", "--user", "restart", "cabot"])
-        res['success']=True
-        return True
-
-    def handleReboot(self, req, res):
-        subprocess.call(["sudo", "systemctl", "reboot"])
-        res['success']=True
-        return True
-
-    def handlePoweroff(self, req, res):
-        subprocess.call(["sudo", "systemctl", "poweroff"])
-        res['success']=True
-        return True
-
     def handleSpeak(self, req, res):
-        logger.info("/speak request (%s)"%(str(req)))
+        logger.info("/speak request (%s)", str(req))
         for ble in self.bles.values():
             ble.handleSpeak(req=req)
         res['result'] = True
         return True
 
     def on_terminate(self, bledev):
-        print("terminate {}".format(bledev.address))
+        logger.info("terminate %s", bledev.address)
         self.bles.pop(bledev.address)
 
     def make_device(self, mac_address):
-        return AnyDevice(mac_address=mac_address, manager=self)
+        return gatt.Device(mac_address=mac_address, manager=self)
 
     def device_discovered(self, device):
         if device.alias() == self.name:
             if not device.mac_address in self.bles.keys():
-                for service in device.services:
-                    print("[%s]  Service [%s]" % (device.mac_address, service.uuid))
-                ble = CaBotBLE(address=device.mac_address, mgr=self)
+                ble = CaBotBLE(address=device.mac_address, manager=self)
                 self.bles[device.mac_address] = ble
                 thread = threading.Thread(target=ble.start)
                 thread.start()
@@ -368,24 +352,26 @@ class AnyDeviceManager(gatt.DeviceManager, object):
             ble.req_stop()
 
 
-if __name__ == "__main__":
+def main():
     cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
     adapter_name = os.environ['CABOT_BLE_ADAPTOR'] if 'CABOT_BLE_ADAPTOR' in os.environ else "hci0"
 
-    manager = AnyDeviceManager(adapter_name=adapter_name, name=cabot_name)
+    device_manager = AnyDeviceManager(adapter_name=adapter_name, name=cabot_name)
 
     # power on the adapter
-    if not manager.is_adapter_powered:
-        manager.is_adapter_powered = True
+    if not device_manager.is_adapter_powered:
+        device_manager.is_adapter_powered = True
 
-    manager.start_discovery(service_uuids=["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
+    device_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
 
     try:
-        manager.run()
+        device_manager.run()
     except:
-        print(traceback.format_exc())
         logger.info(traceback.format_exc())
     finally:
-        manager.stop()
-        manager._main_loop.quit()
+        device_manager.stop()
+        device_manager._main_loop.quit()
         client.terminate()
+
+if __name__ == "__main__":
+    main()
