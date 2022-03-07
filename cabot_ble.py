@@ -65,8 +65,10 @@ def polling_ros():
         except Exception:
             # except Failed to connect to ROS
             pass
+    else:
+        POLLING_STOP.set()
 
-polling_ros()
+POLLING_STOP=polling_ros()
 
 ### Debug
 def set_debug_mode():
@@ -82,8 +84,7 @@ def set_debug_mode():
 if DEBUG:
     set_debug_mode()
 
-
-class BLECharacteristic:
+class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
         self.owner = owner
         self.uuid = uuid
@@ -104,7 +105,7 @@ class BLECharacteristic:
             logger.info("could not connect to char %s", self.uuid)
 
 
-class VersionChar(BLECharacteristic):
+class VersionChar(BLESubChar):
     def __init__(self, owner, uuid):
         super().__init__(owner, uuid)
 
@@ -118,18 +119,20 @@ class VersionChar(BLECharacteristic):
     def not_found(self):
         logger.error("version number is not implemented")
 
-class SystemctlChar(BLECharacteristic):
+
+class CabotManageChar(BLESubChar):
     def __init__(self, owner, uuid, command):
         super().__init__(owner, uuid)
         self.command = command
 
     def callback(self, handle, value):
-        subprocess.call(self.command)
+        self.command()
 
     def not_found(self):
         logger.error("%s is not implemented", " ".join(self.command))
 
-class DestinationChar(BLECharacteristic):
+
+class DestinationChar(BLESubChar):
     def __init__(self, owner, uuid):
         super().__init__(owner, uuid)
 
@@ -147,7 +150,8 @@ class DestinationChar(BLECharacteristic):
         event = NavigationEvent(subtype="destination", param=value)
         self.owner.event_topic.publish(roslibpy.Message({'data': str(event)}))
 
-class SummonsChar(BLECharacteristic):
+
+class SummonsChar(BLESubChar):
     def __init__(self, owner, uuid):
         super().__init__(owner, uuid)
 
@@ -157,7 +161,8 @@ class SummonsChar(BLECharacteristic):
         event = NavigationEvent(subtype="summons", param=value)
         self.owner.event_topic.publish(roslibpy.Message({'data': str(event)}))
 
-class HeartbeatChar(BLECharacteristic):
+
+class HeartbeatChar(BLESubChar):
     def __init__(self, owner, uuid):
         super().__init__(owner, uuid)
 
@@ -167,29 +172,123 @@ class HeartbeatChar(BLECharacteristic):
         self.owner.last_heartbeat = time.time()
 
 
+class StoreChar(BLESubChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def callback(self, handle, value):
+        value = value.decode("utf-8")
+        logger.info("store(%s):%s", self.owner.address, value)
+
+
+class BLENotifyChar:
+    def __init__(self, owner, uuid):
+        self.owner = owner
+        self.uuid = uuid
+
+    @util.setInterval(0.01, times=1)
+    def _call_async(self, uuid, text):
+        logger.info("call async %s with %s", uuid, text)
+        try:
+            self.target.char_write(uuid, value=text.encode("utf-8"))
+        except:
+            traceback.print_exc()
+            try:
+                self.target.char_write(uuid, value=text.encode("utf-8"))
+            except:
+                traceback.print_exc()
+                return
+
+
+class StatusChar(BLENotifyChar):
+    def __init__(self, owner, uuid, func, interval=5):
+        super().__init__(owner, uuid)
+        self.func = func
+        self.interval = interval
+        self._loop()
+        self.count = 0
+
+    @util.setInterval(1)
+    def _loop(self):
+        self.count += 1
+        if self.interval <= self.count:
+            self.count = 0
+            self.notify()
+
+    def notify(self):
+        status = json.dumps(self.func())
+        self._call_async(self.uuid, status)
+
+
+class SpeakChar(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def handleSpeak(self, req):
+        if not self.owner.ready:
+            return None
+        text = req['text']
+        force = req['force']
+        if force:
+            text = "__force_stop__\n" + text
+
+        self._call_async(self.uuid, text)
+        return True
+
+class EventChars:
+    def __init__(self):
+        self.event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+        self.event_topic.subscribe(self._event_callback)
+
+        self.navi_uuid = CABOT_BLE_UUID(0x300)
+        self.content_uuid = CABOT_BLE_UUID(0x400)
+        self.sound_uuid = CABOT_BLE_UUID(0x500)
+
+    def _event_callback(self, msg):
+        event = BaseEvent.parse(msg['data'])
+        if event is None:
+            logger.error("cabot event %s cannot be parsed", msg['data'])
+            return
+
+        if event.type != NavigationEvent.TYPE:
+            return
+
+        if event.subtype == "next":
+            # notify the phone next event
+            self._call_async(self.navi_uuid, "next")
+
+        if event.subtype == "arrived":
+            self._call_async(self.navi_uuid, "arrived")
+
+        if event.subtype == "content":
+            self._call_async(self.content_uuid, event.param)
+
+        if event.subtype == "sound":
+            self._call_async(self.sound_uuid, event.param)
+
+
 class CaBotBLE:
 
-    def __init__(self, address, manager):
+    def __init__(self, address, ble_manager, cabot_manager):
         self.address = address
-        self.manager = manager
+        self.ble_manager = ble_manager
+        self.cabot_manager = cabot_manager
         self.chars = []
 
         self.chars.append(VersionChar(self, CABOT_BLE_UUID(0x00)))
-        self.chars.append(SystemctlChar(self, CABOT_BLE_UUID(0x1000), ["sudo", "systemctl", "reboot"]))
-        self.chars.append(SystemctlChar(self, CABOT_BLE_UUID(0x1001), ["sudo", "systemctl", "poweroff"]))
-        self.chars.append(SystemctlChar(self, CABOT_BLE_UUID(0x1002), ["systemctl", "--user", "restart", "cabot"]))
+        self.chars.append(StoreChar(self, CABOT_BLE_UUID(0x01)))
+        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x1000), cabot_manager.reboot))
+        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x1001), cabot_manager.poweroff))
+        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x1002), cabot_manager.restart))
+        self.device_status_char = StatusChar(self, CABOT_BLE_UUID(0x1010), cabot_manager.device_status, interval=5)
+        self.ros_status_chars = StatusChar(self, CABOT_BLE_UUID(0x1011), cabot_manager.cabot_ros_status, interval=5)
+
         self.chars.append(SummonsChar(self, CABOT_BLE_UUID(0x09)))
         self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x10)))
         self.chars.append(HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
 
-        self.speak_uuid = CABOT_BLE_UUID(0x200)
-        self.navi_uuid = CABOT_BLE_UUID(0x300)
-        self.content_uuid = CABOT_BLE_UUID(0x400)
-        self.sound_uuid = CABOT_BLE_UUID(0x500)
-        self.data_buffer = {}
-
-        self.event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
-        self.event_topic.subscribe(self._event_callback)
+        self.speak_char = SpeakChar(self, CABOT_BLE_UUID(0x200))
+        self.event_char = EventChars()
 
         self.adapter = pygatt.GATTToolBackend()
         self.target = None
@@ -245,15 +344,7 @@ class CaBotBLE:
             logger.error(traceback.format_exc())
         finally:
             self.stop()
-            self.manager.on_terminate(self)
-
-    def buffered_callback(self, handle, value):
-        buf = self.data_buffer[handle]
-        if value[-1] == ord('\n'):
-            result = json.loads(str(buf + value[:-1]))
-            # TODO
-        else:
-            self.data_buffer[handle] = buf + value
+            self.ble_manager.on_terminate(self)
 
     def req_stop(self):
         self.alive = False
@@ -269,58 +360,13 @@ class CaBotBLE:
                 pass
         self.adapter.stop()
 
-    def handleSpeak(self, req):
-        if not self.ready:
-            return None
-        text = req['text']
-        force = req['force']
-        if force:
-            text = "__force_stop__\n" + text
-        self.call_async(self.speak_uuid, text)
-        return True
 
-    def _event_callback(self, msg):
-        event = BaseEvent.parse(msg['data'])
-        if event is None:
-            logger.error("cabot event %s cannot be parsed", msg['data'])
-            return
-
-        if event.type != NavigationEvent.TYPE:
-            return
-
-        if event.subtype == "next":
-            # notify the phone next event
-            self.call_async(self.navi_uuid, "next")
-
-        if event.subtype == "arrived":
-            self.call_async(self.navi_uuid, "arrived")
-
-        if event.subtype == "content":
-            self.call_async(self.content_uuid, event.param)
-
-        if event.subtype == "sound":
-            self.call_async(self.sound_uuid, event.param)
-
-
-    @util.setInterval(0.01, times=1)
-    def call_async(self, uuid, text):
-        logger.info("call async %s with %s", uuid, text)
-        try:
-            self.target.char_write(uuid, value=text.encode("utf-8"))
-        except:
-            traceback.print_exc()
-            try:
-                self.target.char_write(uuid, value=text.encode("utf-8"))
-            except:
-                traceback.print_exc()
-                return
-
-
-class AnyDeviceManager(gatt.DeviceManager, object):
-    def __init__(self, adapter_name, name=None):
+class BLEDeviceManager(gatt.DeviceManager, object):
+    def __init__(self, adapter_name, cabot_name=None, cabot_manager=None):
         super().__init__(adapter_name = adapter_name)
-        self.name = "CaBot" + ("-" + name if name is not None else "")
-        logger.info("name: %s", self.name)
+        self.cabot_name = "CaBot" + ("-" + cabot_name if cabot_name is not None else "")
+        self.cabot_manager=cabot_manager
+        logger.info("cabot_name: %s", self.cabot_name)
         self.bles = {}
         self.service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
         self.service.advertise(self.handleSpeak)
@@ -328,7 +374,8 @@ class AnyDeviceManager(gatt.DeviceManager, object):
     def handleSpeak(self, req, res):
         logger.info("/speak request (%s)", str(req))
         for ble in self.bles.values():
-            ble.handleSpeak(req=req)
+            if ble.speak_char:
+                ble.speak_char.handleSpeak(req=req)
         res['result'] = True
         return True
 
@@ -340,9 +387,9 @@ class AnyDeviceManager(gatt.DeviceManager, object):
         return gatt.Device(mac_address=mac_address, manager=self)
 
     def device_discovered(self, device):
-        if device.alias() == self.name:
+        if device.alias() == self.cabot_name:
             if not device.mac_address in self.bles.keys():
-                ble = CaBotBLE(address=device.mac_address, manager=self)
+                ble = CaBotBLE(address=device.mac_address, manager=self, cabot_manager=self.cabot_manager)
                 self.bles[device.mac_address] = ble
                 thread = threading.Thread(target=ble.start)
                 thread.start()
@@ -352,25 +399,119 @@ class AnyDeviceManager(gatt.DeviceManager, object):
             ble.req_stop()
 
 
+class CaBotManager:
+    def __init__(self):
+        self.device_ok = False
+        self.device_status = {}
+        self.cabot_service_active = False
+        self.cabot_ros_status = {}
+        self.systemctl_lock = threading.Lock()
+        self.start_flag = False
+        self.stop_run = None
+        self.check_interval = 1
+        self.run_count = 0
+
+    def run(self, start=False):
+        self.start_flag=start
+        self._run_once()
+        self.stop_run = self._run()
+
+    def stop(self):
+        if self.stop_run:
+            self.stop_run.set()
+        
+    @util.setInterval(5)
+    def _run(self):
+        self._run_once()
+
+    def _run_once(self):
+        self.run_count += 1
+        if self.check_interval <= self.run_count:
+            self._check_device_status()
+            self._check_service_active()
+            self.run_count = 0
+            if self.device_ok and self.cabot_service_active:
+                self.check_interval = min(self.check_interval+1, 1)
+            else:
+                self.check_interval = 1
+
+        logger.info("CaBotManager run %d %d %d %d %d", self.start_flag, self.device_ok, self.cabot_service_active, self.run_count, self.check_interval)
+        if self.start_flag:
+            if self.device_ok:
+                self.start_flag = False
+                if not self.cabot_service_active:
+                    self.restart()
+
+    def _check_device_status(self):
+        # ToDo: call check_device_status
+        result = subprocess.run(["sudo", "docker-compose", "run", "--rm",  "check"], capture_output=True, text=True, cwd="/opt/cabot-device-check")
+        logger.info(result.returncode)
+        logger.info(result.stdout)
+        if result.returncode == 0:
+            self.device_ok = True
+        else:
+            self.device_ok = False
+
+    def _check_service_active(self):
+        if self._call(["systemctl", "--user", "--quiet", "is-active", "cabot"]) == 0:
+            self.cabot_service_active = True
+        else:
+            self.cabot_service_active = False
+
+    def _call(self, command, lock=None):
+        if lock is not None and not lock.acquire(blocking=False):
+            logger.info("lock could not be acquired")
+            return
+        returncode = 1
+        try:
+            logger.info("calling %s", str(command))
+            returncode = subprocess.call(command)
+        except:
+            logger.error(traceback.format_exc())
+        finally:
+            if lock is not None:
+                lock.release()
+        return returncode
+
+    def reboot(self):
+        self._call(["sudo", "systemctl", "reboot"], lock=self.systemctl_lock)
+
+    def poweroff(self):
+        self._call(["sudo", "systemctl", "poweroff"], lock=self.systemctl_lock)
+
+    def restart(self):
+        self._call(["systemctl", "--user", "restart", "cabot"], lock=self.systemctl_lock)
+
+    def device_status(self):
+        return self.device_status
+
+    def cabot_ros_status(self):
+        return self.cabot_ros_status
+
+
 def main():
     cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
     adapter_name = os.environ['CABOT_BLE_ADAPTOR'] if 'CABOT_BLE_ADAPTOR' in os.environ else "hci0"
+    start_at_launch = (os.environ['CABOT_START_AT_LAUNCH'] == "1") if 'CABOT_START_AT_LAUNCH' in os.environ else False
 
-    device_manager = AnyDeviceManager(adapter_name=adapter_name, name=cabot_name)
+    cabot_manager = CaBotManager()
+    cabot_manager.run(start=start_at_launch)
+
+    ble_manager = BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
 
     # power on the adapter
-    if not device_manager.is_adapter_powered:
-        device_manager.is_adapter_powered = True
+    if not ble_manager.is_adapter_powered:
+        ble_manager.is_adapter_powered = True
 
-    device_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
+    ble_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
 
     try:
-        device_manager.run()
+        ble_manager.run()
     except:
         logger.info(traceback.format_exc())
     finally:
-        device_manager.stop()
-        device_manager._main_loop.quit()
+        ble_manager.stop()
+        ble_manager._main_loop.quit()
         client.terminate()
 
 if __name__ == "__main__":

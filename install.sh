@@ -18,4 +18,4 @@ docker-compose build --build-arg UID=$(id -u)
 INSTALL_DIR=$HOME/.config/systemd/user
 cp $scriptdir/cabot-ble-server.service $INSTALL_DIR
 systemctl --user daemon-reload
-systemctl --user enable --now cabot-ble-server
+systemctl --user enable cabot-ble-server

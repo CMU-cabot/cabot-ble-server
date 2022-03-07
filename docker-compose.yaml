@@ -17,8 +17,14 @@ services:
       - /sys/fs/cgroup:/sys/fs/cgroup
 # for systemctl --user
       - /run/user:/run/user
+      - ../cabot-device-check:/opt/cabot-device-check
+      - /usr/bin/docker:/usr/bin/docker
+      - /usr/local/bin/docker-compose:/usr/local/bin/docker-compose
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - CABOT_NAME
+      - CABOT_BLE_ADAPTOR
+      - CABOT_START_AT_LAUNCH
 # required for display, device, and systemctl
     privileged: true
 # device, bluetooth
