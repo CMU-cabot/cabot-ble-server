@@ -20,14 +20,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import gzip
 import os
 import time
 import json
 import threading
 import traceback
 import logging
+import re
 import subprocess
-
 from uuid import UUID
 
 import pygatt
@@ -40,7 +41,7 @@ from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 
 CABOT_BLE_UUID = lambda _id: UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".format(_id))
-CABOT_BLE_VERSION = "1"
+CABOT_BLE_VERSION = "20220314"
 DEBUG=False
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -49,6 +50,8 @@ logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 
 client = roslibpy.Ros(host='localhost', port=9091)
 ROS_CLIENT_CONNECTED = [False]
+
+subscriber = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
 
 @util.setInterval(1.0)
 def polling_ros():
@@ -67,6 +70,9 @@ def polling_ros():
             pass
     else:
         POLLING_STOP.set()
+        logger.info("subscribe to diagnostic_agg")
+        subscriber.subscribe(diagnostic_agg_callback)
+
 
 POLLING_STOP=polling_ros()
 
@@ -83,6 +89,62 @@ def set_debug_mode():
 
 if DEBUG:
     set_debug_mode()
+
+
+class Diagnostics:
+    def __init__(self, name, states):
+        self.name = name
+        self.states = states
+        for state in self.states:
+            if state['name'] == self.name:
+                self.states.remove(state)
+                self.main_state = state
+
+    @property
+    def level(self):
+        return self.main_state['level']
+
+    @property
+    def status(self):
+        return {
+            "name": self.name,
+            "status": (self.level == 0),
+            "message": self.messages
+        }
+
+    @property
+    def messages(self):
+        res = ""
+        for state in self.states:
+            name=state['name'].replace(self.name, "")
+            res += "%s: %s\n"%(name,state['message'])
+        return res
+
+    def __str__(self):
+        res = "[%d]%s\n"%(self.status, self.name)
+        res += self.messages
+        return res
+
+    def from_message(msg):
+        top_level_names = []
+        top_level_pat = re.compile("^/[^/]+$")
+        for state in msg['status']:
+            if top_level_pat.match(state['name']):
+                top_level_names.append(state['name'])
+        diagnostics = []
+        for name in top_level_names:
+            name_pat = re.compile("^%s.*"%(name))
+            states = []
+            for state in msg['status']:
+                if name_pat.match(state['name']):
+                    states.append(state)
+            diagnostics.append(Diagnostics(name, states))
+        return diagnostics
+
+diagnostics = None
+def diagnostic_agg_callback(msg):
+    global diagnostics
+    diagnostics = Diagnostics.from_message(msg)
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -105,31 +167,24 @@ class BLESubChar:
             logger.info("could not connect to char %s", self.uuid)
 
 
-class VersionChar(BLESubChar):
-    def __init__(self, owner, uuid):
-        super().__init__(owner, uuid)
-
-    def callback(self, handle, value):
-        version = value.decode("utf-8")
-        if version != CABOT_BLE_VERSION:
-            logger.error("BLE Version mismatch %s != %s", CABOT_BLE_VERSION, value)
-        else:
-            logger.info("BLE Version matched %s", version)
-
-    def not_found(self):
-        logger.error("version number is not implemented")
-
-
 class CabotManageChar(BLESubChar):
-    def __init__(self, owner, uuid, command):
+    def __init__(self, owner, uuid, manager):
         super().__init__(owner, uuid)
-        self.command = command
+        self.manager = manager
 
     def callback(self, handle, value):
-        self.command()
+        value = value.decode("utf-8")
+        if value == "reboot":
+            self.manager.reboot()
+        if value == "poweroff":
+            self.manager.poweroff()
+        if value == "stop":
+            self.manager.stop()
+        if value == "start":
+            self.manager.start()
 
     def not_found(self):
-        logger.error("%s is not implemented", " ".join(self.command))
+        logger.error("%s is not implemented", self.uuid)
 
 
 class DestinationChar(BLESubChar):
@@ -168,7 +223,7 @@ class HeartbeatChar(BLESubChar):
 
     def callback(self, handle, value):
         value = value.decode("utf-8")
-        logger.info("heartbeat(%s):%s", self.owner.address, value)
+        # logger.info("heartbeat(%s):%s", self.owner.address, value)
         self.owner.last_heartbeat = time.time()
 
 
@@ -188,16 +243,45 @@ class BLENotifyChar:
 
     @util.setInterval(0.01, times=1)
     def _call_async(self, uuid, text):
-        logger.info("call async %s with %s", uuid, text)
+        start = time.time()
+        data = bytearray(("%s"%(text)).encode("utf-8"))
+        if len(data) > 0:
+            length0 = len(data)
+            data = bytearray(gzip.compress(data))
+            length = len(data)+2
+            data[0:0] = length.to_bytes(2,"big")
+            logger.info("data/gzip length = %d/%d (%.0f%%)", length, length0, length/length0*100.0)
+        if not self.owner.ready:
+            logger.info("call async %s with data(%d), but not ready", uuid, len(data))
+            return
+
         try:
-            self.target.char_write(uuid, value=text.encode("utf-8"))
+            handle = self.owner.target.get_handle(uuid)
         except:
-            traceback.print_exc()
-            try:
-                self.target.char_write(uuid, value=text.encode("utf-8"))
-            except:
-                traceback.print_exc()
-                return
+            logger.info("Could not get handle")
+            return
+
+        try:
+            index = 0
+            size = 512
+            while len(data) > index:
+                temp = data[index:index+size]
+                index = index + size
+                self.owner.target.char_write_handle(handle, value=temp, wait_for_response=True, timeout=5)
+            logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
+                        len(data), (time.time()-start), len(data)*8/(time.time()-start)/1024)
+        except:
+            logger.info(traceback.format_exc())
+            return
+
+
+class VersionChar(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def notify(self):
+        logger.info("sending version")
+        self._call_async(self.uuid, CABOT_BLE_VERSION)
 
 
 class StatusChar(BLENotifyChar):
@@ -205,7 +289,7 @@ class StatusChar(BLENotifyChar):
         super().__init__(owner, uuid)
         self.func = func
         self.interval = interval
-        self._loop()
+        self.loopStop = self._loop()
         self.count = 0
 
     @util.setInterval(1)
@@ -216,8 +300,11 @@ class StatusChar(BLENotifyChar):
             self.notify()
 
     def notify(self):
-        status = json.dumps(self.func())
+        status = json.dumps(self.func(), separators=(',', ':'))
         self._call_async(self.uuid, status)
+
+    def stop(self):
+        self.loopStop.set()
 
 
 class SpeakChar(BLENotifyChar):
@@ -275,13 +362,11 @@ class CaBotBLE:
         self.cabot_manager = cabot_manager
         self.chars = []
 
-        self.chars.append(VersionChar(self, CABOT_BLE_UUID(0x00)))
-        self.chars.append(StoreChar(self, CABOT_BLE_UUID(0x01)))
-        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x1000), cabot_manager.reboot))
-        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x1001), cabot_manager.poweroff))
-        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x1002), cabot_manager.restart))
-        self.device_status_char = StatusChar(self, CABOT_BLE_UUID(0x1010), cabot_manager.device_status, interval=5)
-        self.ros_status_chars = StatusChar(self, CABOT_BLE_UUID(0x1011), cabot_manager.cabot_ros_status, interval=5)
+        self.version_char = VersionChar(self, CABOT_BLE_UUID(0x00))
+
+        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x05), self.cabot_manager))
+        self.device_status_char = StatusChar(self, CABOT_BLE_UUID(0x06), cabot_manager.device_status, interval=5)
+        self.ros_status_char = StatusChar(self, CABOT_BLE_UUID(0x07), cabot_manager.cabot_system_status, interval=5)
 
         self.chars.append(SummonsChar(self, CABOT_BLE_UUID(0x09)))
         self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x10)))
@@ -290,7 +375,7 @@ class CaBotBLE:
         self.speak_char = SpeakChar(self, CABOT_BLE_UUID(0x200))
         self.event_char = EventChars()
 
-        self.adapter = pygatt.GATTToolBackend()
+        self.adapter = pygatt.GATTToolBackend(max_read=2048)
         self.target = None
         self.last_heartbeat = time.time()
 
@@ -322,11 +407,16 @@ class CaBotBLE:
 
                 # discover characteristics once to reduce waiting time if characteristics is not provided by the target
                 target_chars = self.target.discover_characteristics()
+                error=False
                 for char in self.chars:
                     if target_chars.get(char.uuid):
                         char.subscribe_to(self.target)
                     else:
                         char.not_found()
+                        error=True
+                if error:
+                    break
+                self.version_char.notify()
                 self.ready = True
 
                 # wait while heart beat is valid
@@ -352,6 +442,8 @@ class CaBotBLE:
     def stop(self):
         self.alive = False
         self.ready = False
+        self.device_status_char.stop()
+        self.ros_status_char.stop()
         if self.target is not None:
             try:
                 self.target.disconnect()
@@ -389,7 +481,7 @@ class BLEDeviceManager(gatt.DeviceManager, object):
     def device_discovered(self, device):
         if device.alias() == self.cabot_name:
             if not device.mac_address in self.bles.keys():
-                ble = CaBotBLE(address=device.mac_address, manager=self, cabot_manager=self.cabot_manager)
+                ble = CaBotBLE(address=device.mac_address, ble_manager=self, cabot_manager=self.cabot_manager)
                 self.bles[device.mac_address] = ble
                 thread = threading.Thread(target=ble.start)
                 thread.start()
@@ -402,9 +494,9 @@ class BLEDeviceManager(gatt.DeviceManager, object):
 class CaBotManager:
     def __init__(self):
         self.device_ok = False
-        self.device_status = {}
+        self._device_status = {}
         self.cabot_service_active = False
-        self.cabot_ros_status = {}
+        self._cabot_system_status = {}
         self.systemctl_lock = threading.Lock()
         self.start_flag = False
         self.stop_run = None
@@ -435,28 +527,49 @@ class CaBotManager:
             else:
                 self.check_interval = 1
 
-        logger.info("CaBotManager run %d %d %d %d %d", self.start_flag, self.device_ok, self.cabot_service_active, self.run_count, self.check_interval)
+        # logger.info("CaBotManager run %d %d %d %d %d",
+        #             self.start_flag, self.device_ok, self.cabot_service_active, self.run_count, self.check_interval)
         if self.start_flag:
             if self.device_ok:
                 self.start_flag = False
                 if not self.cabot_service_active:
-                    self.restart()
+                    self.start()
 
     def _check_device_status(self):
         # ToDo: call check_device_status
         result = subprocess.run(["sudo", "docker-compose", "run", "--rm",  "check"], capture_output=True, text=True, cwd="/opt/cabot-device-check")
-        logger.info(result.returncode)
-        logger.info(result.stdout)
+        # logger.info(result.returncode)
+        # logger.info(result.stdout)
         if result.returncode == 0:
             self.device_ok = True
+            self._device_status = {
+                "devices": [
+                    { "name": "Summary", "status": self.device_ok, "message": "Device check is OK" }
+                ]
+            }
         else:
             self.device_ok = False
+            self._device_status = {
+                "devices": [
+                    { "name": "Summary", "status": self.device_ok, "message": "Something is wrong" }
+                ]
+            }
 
     def _check_service_active(self):
         if self._call(["systemctl", "--user", "--quiet", "is-active", "cabot"]) == 0:
             self.cabot_service_active = True
         else:
             self.cabot_service_active = False
+        if diagnostics:
+            self._cabot_system_status = {
+                "is_active": self.cabot_service_active,
+                "components": [d.status for d in diagnostics]
+            }
+        else:
+            self._cabot_system_status = {
+                "is_active": self.cabot_service_active,
+                "components": []
+            }
 
     def _call(self, command, lock=None):
         if lock is not None and not lock.acquire(blocking=False):
@@ -464,7 +577,7 @@ class CaBotManager:
             return
         returncode = 1
         try:
-            logger.info("calling %s", str(command))
+            # logger.info("calling %s", str(command))
             returncode = subprocess.call(command)
         except:
             logger.error(traceback.format_exc())
@@ -479,14 +592,17 @@ class CaBotManager:
     def poweroff(self):
         self._call(["sudo", "systemctl", "poweroff"], lock=self.systemctl_lock)
 
-    def restart(self):
-        self._call(["systemctl", "--user", "restart", "cabot"], lock=self.systemctl_lock)
+    def start(self):
+        self._call(["systemctl", "--user", "start", "cabot"], lock=self.systemctl_lock)
+
+    def stop(self):
+        self._call(["systemctl", "--user", "stop", "cabot"], lock=self.systemctl_lock)
 
     def device_status(self):
-        return self.device_status
+        return self._device_status
 
-    def cabot_ros_status(self):
-        return self.cabot_ros_status
+    def cabot_system_status(self):
+        return self._cabot_system_status
 
 
 def main():
@@ -504,6 +620,7 @@ def main():
         ble_manager.is_adapter_powered = True
 
     ble_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
+    #ble_manager.start_discovery()
 
     try:
         ble_manager.run()
