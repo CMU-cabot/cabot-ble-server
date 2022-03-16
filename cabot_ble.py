@@ -21,6 +21,8 @@
 # SOFTWARE.
 
 import gzip
+import math
+import queue
 import os
 import time
 import json
@@ -93,10 +95,10 @@ if DEBUG:
 
 class Diagnostics:
     def __init__(self, name, states):
-        self.name = name
+        self.name = name.replace("/","")
         self.states = states
         for state in self.states:
-            if state['name'] == self.name:
+            if state['name'] == name:
                 self.states.remove(state)
                 self.main_state = state
 
@@ -116,8 +118,10 @@ class Diagnostics:
     def messages(self):
         res = ""
         for state in self.states:
-            name=state['name'].replace(self.name, "")
+            name=state['name'].replace("/%s/"%(self.name), "")
             res += "%s: %s\n"%(name,state['message'])
+            for entry in state['values']:
+                res += "  %s:\n    %s\n"%(entry['key'], entry['value'])
         return res
 
     def __str__(self):
@@ -241,38 +245,8 @@ class BLENotifyChar:
         self.owner = owner
         self.uuid = uuid
 
-    @util.setInterval(0.01, times=1)
-    def _call_async(self, uuid, text):
-        start = time.time()
-        data = bytearray(("%s"%(text)).encode("utf-8"))
-        if len(data) > 0:
-            length0 = len(data)
-            data = bytearray(gzip.compress(data))
-            length = len(data)+2
-            data[0:0] = length.to_bytes(2,"big")
-            logger.info("data/gzip length = %d/%d (%.0f%%)", length, length0, length/length0*100.0)
-        if not self.owner.ready:
-            logger.info("call async %s with data(%d), but not ready", uuid, len(data))
-            return
-
-        try:
-            handle = self.owner.target.get_handle(uuid)
-        except:
-            logger.info("Could not get handle")
-            return
-
-        try:
-            index = 0
-            size = 512
-            while len(data) > index:
-                temp = data[index:index+size]
-                index = index + size
-                self.owner.target.char_write_handle(handle, value=temp, wait_for_response=True, timeout=5)
-            logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
-                        len(data), (time.time()-start), len(data)*8/(time.time()-start)/1024)
-        except:
-            logger.info(traceback.format_exc())
-            return
+    def send_text(self, uuid, text):
+        self.owner.send_text(uuid, text)
 
 
 class VersionChar(BLENotifyChar):
@@ -281,7 +255,7 @@ class VersionChar(BLENotifyChar):
 
     def notify(self):
         logger.info("sending version")
-        self._call_async(self.uuid, CABOT_BLE_VERSION)
+        self.send_text(self.uuid, CABOT_BLE_VERSION)
 
 
 class StatusChar(BLENotifyChar):
@@ -301,7 +275,7 @@ class StatusChar(BLENotifyChar):
 
     def notify(self):
         status = json.dumps(self.func(), separators=(',', ':'))
-        self._call_async(self.uuid, status)
+        self.send_text(self.uuid, status)
 
     def stop(self):
         self.loopStop.set()
@@ -319,7 +293,7 @@ class SpeakChar(BLENotifyChar):
         if force:
             text = "__force_stop__\n" + text
 
-        self._call_async(self.uuid, text)
+        self.send_text(self.uuid, text)
         return True
 
 class EventChars:
@@ -342,16 +316,16 @@ class EventChars:
 
         if event.subtype == "next":
             # notify the phone next event
-            self._call_async(self.navi_uuid, "next")
+            self.send_text(self.navi_uuid, "next")
 
         if event.subtype == "arrived":
-            self._call_async(self.navi_uuid, "arrived")
+            self.send_text(self.navi_uuid, "arrived")
 
         if event.subtype == "content":
-            self._call_async(self.content_uuid, event.param)
+            self.send_text(self.content_uuid, event.param)
 
         if event.subtype == "sound":
-            self._call_async(self.sound_uuid, event.param)
+            self.send_text(self.sound_uuid, event.param)
 
 
 class CaBotBLE:
@@ -382,6 +356,53 @@ class CaBotBLE:
         # speak
         self.alive = False
         self.ready = False
+
+        self.queue = queue.Queue()
+        self.check_queue_stop = self.check_queue()
+
+    def send_text(self, uuid, text):
+        data = ("%s"%(text)).encode("utf-8")
+        if not self.ready:
+            logger.info("call async %s with data(%d), but not ready", uuid, len(data))
+            return
+        try:
+            handle = self.target.get_handle(uuid)
+        except:
+            logger.info("Could not get handle")
+            return
+        self.queue.put((handle, data))
+
+    def make_packets(self, data, size):
+        length0 = len(data)
+        data = bytearray(gzip.compress(data))
+        length1 = len(data)
+        packet_size = size - 4
+        packets = []
+        n = math.ceil(length1/packet_size)
+        for i in range(0,n):
+            temp = bytearray(data[i*packet_size:(i+1)*packet_size])
+            temp[0:0] = length1.to_bytes(2,"big")
+            temp[2:2] = (i*packet_size).to_bytes(2,"big")
+            logger.info("packet[%d] = %d"%(i, len(temp)))
+            packets.append(temp)
+        logger.info("data/gzip length = %d/%d (%.0f%%)", length1, length0, length1/length0*100.0)
+        return packets
+
+    @util.setInterval(0.01)
+    def check_queue(self):
+        if self.queue.empty():
+            return
+        (handle, data) = self.queue.get()
+        start = time.time()
+        try:
+            total = 0
+            for packet in self.make_packets(data, 512):
+                total += len(packet)
+                self.target.char_write_handle(handle, value=packet, wait_for_response=True, timeout=2)
+            logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
+                        total, (time.time()-start), total*8/(time.time()-start)/1024)
+        except:
+            logger.info(traceback.format_exc())
 
     def start(self):
         self.alive = True
@@ -416,8 +437,8 @@ class CaBotBLE:
                         error=True
                 if error:
                     break
-                self.version_char.notify()
                 self.ready = True
+                self.version_char.notify()
 
                 # wait while heart beat is valid
                 self.last_heartbeat = time.time()
@@ -444,6 +465,7 @@ class CaBotBLE:
         self.ready = False
         self.device_status_char.stop()
         self.ros_status_char.stop()
+        self.check_queue_stop.set()
         if self.target is not None:
             try:
                 self.target.disconnect()
