@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 
 class BatteryDriverDelegate(object):
-    def battery_info(self, info):
+    def battery_status(self, status):
         logger.error("{} is not implemented".format(inspect.currentframe().f_code.co_name))
 
 
@@ -40,11 +40,11 @@ class BatteryDriver:
 
     def start(self):
         sleep_time = 3
-        while True:
+        while self.is_alive:
             try:
                 driver = None
                 logger.info("opening serial %s", self.port_name)
-                while True:
+                while self.is_alive:
                     try:
                         self.port = serial.Serial(self.port_name, self.baud, timeout=5, write_timeout=10)
                         break
@@ -74,6 +74,7 @@ class BatteryDriver:
                 logger.error("connection disconnected")
                 time.sleep(sleep_time)
             except SystemExit as e:
+                logger.error(e)
                 break
             except:
                 logger.error(sys.exc_info()[0])
@@ -144,7 +145,7 @@ class BatteryDriver:
                 time.sleep(0.01)
             else:
                 data = self.write_queue.get()
-                while True:
+                while self.is_alive:
                     try:
                         if isinstance(data, bytes):
                             self._write(data)
@@ -213,29 +214,41 @@ class BatteryDriver:
                     data = self._tryRead(cmd[1])
                     checksum = int.from_bytes(self._tryRead(1), 'little')
                     if checksum == BatteryDriver.checksum(data):
-                        info = BatteryInfo(data)
+                        info = BatteryStatus(data)
                         #logger.info(info)
                         if self.delegate:
-                            self.delegate.battery_info(info)
+                            self.delegate.battery_status(info)
                 state = 0
 
 
 
-class BatteryInfo:
-    def __init__(self, data):
-        (power_jetson, power_12v, power_5v, power_odrive, battery_capacity) = struct.unpack('BBBBB', data[0:5])
-        (jetson_current, loop_cnt) = struct.unpack('<HI', data[5:11])
-        (shutdown, lowpower_shutdown) = struct.unpack('BB', data[11:13])
-        # do something here
-        self.power_jetson = power_jetson
-        self.power_12v = power_12v
-        self.power_5v = power_5v
-        self.power_odrive = power_odrive
-        self.battery_capacity = battery_capacity
-        self.jetson_current = jetson_current
-        self.loop_cnt = loop_cnt
-        self.shutdown = shutdown
-        self.lowpower_shutdown = lowpower_shutdown
+class BatteryStatus:
+    def __init__(self, data=None):
+        if data:
+            (power_jetson, power_12v, power_5v, power_odrive, battery_capacity) = struct.unpack('BBBBB', data[0:5])
+            (jetson_current, loop_cnt) = struct.unpack('<HI', data[5:11])
+            (shutdown, lowpower_shutdown) = struct.unpack('BB', data[11:13])
+            # do something here
+            self.power_jetson = power_jetson
+            self.power_12v = power_12v
+            self.power_5v = power_5v
+            self.power_odrive = power_odrive
+            self.battery_capacity = battery_capacity
+            self.jetson_current = jetson_current
+            self.loop_cnt = loop_cnt
+            self.shutdown = shutdown
+            self.lowpower_shutdown = lowpower_shutdown
+        else:
+            self.power_jetson = -1
+            self.power_12v = -1
+            self.power_5v = -1
+            self.power_odrive = -1
+            self.battery_capacity = -1
+            self.jetson_current = -1
+            self.loop_cnt = 0
+            self.shutdown = 0
+            self.lowpower_shutdown = 0
+
 
     def __str__(self):
         temp = ""
@@ -243,6 +256,48 @@ class BatteryInfo:
             temp += "{}: {}\n".format(key, self.__dict__[key])
         return temp.strip()
 
+    @property
+    def json(self):
+        def on_off(value):
+            if value == 1:
+                return "ON"
+            if value == 0:
+                return "OFF"
+            return "UNKNOWN"
+        def percent(value):
+            if value >= 0:
+                return "{}%".format(value)
+            else:
+                return "Unknown"
+        def milliampere(value):
+            if value >= 0:
+                return "{}mA".format(value)
+            else:
+                return "Unknown"
+
+        level = 0
+        if self.battery_capacity <= 20:
+            level = 1
+        if self.battery_capacity <= 10:
+            level = 2
+
+        return {
+            'name': "Battery Control",
+            'level': level,
+            'message': percent(self.battery_capacity),
+            'hardware_id': "cabot2-ace-battery-control",
+            'values': {
+                'Jetson power': on_off(self.power_jetson),
+                '12V power': on_off(self.power_12v),
+                '5V power': on_off(self.power_5v),
+                'ODrive power': on_off(self.power_odrive),
+                'Battery Capacity': percent(self.battery_capacity),
+                'Jetson current': milliampere(self.jetson_current),
+                'Loop count': str(self.loop_cnt),
+                'Shutdown Request': str(self.shutdown),
+                'Lowpower Shutdown Request': str(self.lowpower_shutdown)
+                }
+            }
 
 def main():
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else '/dev/ttyACM0'

@@ -6,7 +6,7 @@ import time
 
 import roslibpy
 
-from cabot_ace_battery_control import BatteryDriver, BatteryDriverDelegate, BatteryInfo
+from .cabot_ace_battery_driver import BatteryDriver, BatteryDriverDelegate, BatteryStatus
 from cabot import util
 
 DEBUG=False
@@ -18,20 +18,20 @@ class Delegate(BatteryDriverDelegate):
     def __init__(self):
         self.count=0
 
-    def battery_info(self, info):
+    def battery_status(self, status):
         self.count+=1
         if self.count % 50 == 0:
             logger.info(info)
-        if info.shutdown:
+        if status.shutdown:
             logger.info("shutdown requested")
-        if info.lowpower_shutdown:
+        if status.lowpower_shutdown:
             logger.info("lowpower shutdown requested")
 
 
-class BatteryControlNode:
-    def __init__(self, client, control):
+class BatteryDriverNode:
+    def __init__(self, client, driver):
         self.client = client
-        self.control = control
+        self.driver = driver
         self.connected = False
 
         self.service0 = roslibpy.Service(self.client, '/ace_battery_control/turn_jetson_switch_on', 'std_srvs/Empty')
@@ -104,11 +104,11 @@ def main():
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else '/dev/ttyACM0'
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else 115200
     delegate = Delegate()
-    control = BatteryDriver(port_name, baud, delegate=delegate)
-    BatteryControlNode(client, control)
+    driver = BatteryDriver(port_name, baud, delegate=delegate)
+    BatteryDriverNode(client, driver)
     
     client.run()
-    control.start()
+    driver.start()
 
 
 if __name__ == "__main__":

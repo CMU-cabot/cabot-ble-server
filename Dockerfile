@@ -40,6 +40,7 @@ ENV HOME /home/$USERNAME
 WORKDIR $HOME
 COPY cabot $HOME/cabot
 COPY cabot_ui $HOME/cabot_ui
+COPY cabot_ace $HOME/cabot_ace
 COPY cabot_ble.py $HOME/cabot_ble.py
 COPY entrypoint.sh /entrypoint.sh
 ENTRYPOINT [ "/entrypoint.sh" ]

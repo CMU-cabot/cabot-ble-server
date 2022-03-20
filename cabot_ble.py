@@ -41,6 +41,7 @@ import roslibpy
 from cabot import util
 from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
+from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
 
 CABOT_BLE_UUID = lambda _id: UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".format(_id))
 CABOT_BLE_VERSION = "20220314"
@@ -66,17 +67,16 @@ def polling_ros():
         try:
             client.run(1.0)
             logger.info("ROS bridge is connected")
+            logger.info("subscribe to diagnostic_agg")
+            subscriber.subscribe(diagnostic_agg_callback)
             ROS_CLIENT_CONNECTED[0] = True
         except Exception:
             # except Failed to connect to ROS
             pass
     else:
-        POLLING_STOP.set()
-        logger.info("subscribe to diagnostic_agg")
-        subscriber.subscribe(diagnostic_agg_callback)
+        pass
 
-
-POLLING_STOP=polling_ros()
+polling_ros()
 
 ### Debug
 def set_debug_mode():
@@ -92,63 +92,10 @@ def set_debug_mode():
 if DEBUG:
     set_debug_mode()
 
-
-class Diagnostics:
-    def __init__(self, name, states):
-        self.name = name.replace("/","")
-        self.states = states
-        for state in self.states:
-            if state['name'] == name:
-                self.states.remove(state)
-                self.main_state = state
-
-    @property
-    def level(self):
-        return self.main_state['level']
-
-    @property
-    def status(self):
-        return {
-            "name": self.name,
-            "status": (self.level == 0),
-            "message": self.messages
-        }
-
-    @property
-    def messages(self):
-        res = ""
-        for state in self.states:
-            name=state['name'].replace("/%s/"%(self.name), "")
-            res += "%s: %s\n"%(name,state['message'])
-            for entry in state['values']:
-                res += "  %s:\n    %s\n"%(entry['key'], entry['value'])
-        return res
-
-    def __str__(self):
-        res = "[%d]%s\n"%(self.status, self.name)
-        res += self.messages
-        return res
-
-    def from_message(msg):
-        top_level_names = []
-        top_level_pat = re.compile("^/[^/]+$")
-        for state in msg['status']:
-            if top_level_pat.match(state['name']):
-                top_level_names.append(state['name'])
-        diagnostics = []
-        for name in top_level_names:
-            name_pat = re.compile("^%s.*"%(name))
-            states = []
-            for state in msg['status']:
-                if name_pat.match(state['name']):
-                    states.append(state)
-            diagnostics.append(Diagnostics(name, states))
-        return diagnostics
-
-diagnostics = None
+diagnostics = []
 def diagnostic_agg_callback(msg):
     global diagnostics
-    diagnostics = Diagnostics.from_message(msg)
+    diagnostics = msg['status']
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -274,7 +221,7 @@ class StatusChar(BLENotifyChar):
             self.notify()
 
     def notify(self):
-        status = json.dumps(self.func(), separators=(',', ':'))
+        status = json.dumps(self.func().json, separators=(',', ':'))
         self.send_text(self.uuid, status)
 
     def stop(self):
@@ -297,13 +244,13 @@ class SpeakChar(BLENotifyChar):
         return True
 
 class EventChars:
-    def __init__(self):
+    def __init__(self, navi_uuid, content_uuid, sound_uuid):
+        self.navi_uuid = navi_uuid
+        self.content_uuid = content_uuid
+        self.sound_uuid = sound_uuid
         self.event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
         self.event_topic.subscribe(self._event_callback)
 
-        self.navi_uuid = CABOT_BLE_UUID(0x300)
-        self.content_uuid = CABOT_BLE_UUID(0x400)
-        self.sound_uuid = CABOT_BLE_UUID(0x500)
 
     def _event_callback(self, msg):
         event = BaseEvent.parse(msg['data'])
@@ -341,13 +288,17 @@ class CaBotBLE:
         self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x05), self.cabot_manager))
         self.device_status_char = StatusChar(self, CABOT_BLE_UUID(0x06), cabot_manager.device_status, interval=5)
         self.ros_status_char = StatusChar(self, CABOT_BLE_UUID(0x07), cabot_manager.cabot_system_status, interval=5)
+        self.battery_status_char = StatusChar(self, CABOT_BLE_UUID(0x08), cabot_manager.cabot_battery_status, interval=5)
 
         self.chars.append(SummonsChar(self, CABOT_BLE_UUID(0x09)))
         self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x10)))
         self.chars.append(HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
 
         self.speak_char = SpeakChar(self, CABOT_BLE_UUID(0x200))
-        self.event_char = EventChars()
+        self.event_char = EventChars(navi_uuid=CABOT_BLE_UUID(0x300),
+                                     content_uuid = CABOT_BLE_UUID(0x400),
+                                     sound_uuid = CABOT_BLE_UUID(0x500))
+
 
         self.adapter = pygatt.GATTToolBackend(max_read=2048)
         self.target = None
@@ -363,7 +314,6 @@ class CaBotBLE:
     def send_text(self, uuid, text):
         data = ("%s"%(text)).encode("utf-8")
         if not self.ready:
-            logger.info("call async %s with data(%d), but not ready", uuid, len(data))
             return
         try:
             handle = self.target.get_handle(uuid)
@@ -383,7 +333,7 @@ class CaBotBLE:
             temp = bytearray(data[i*packet_size:(i+1)*packet_size])
             temp[0:0] = length1.to_bytes(2,"big")
             temp[2:2] = (i*packet_size).to_bytes(2,"big")
-            logger.info("packet[%d] = %d"%(i, len(temp)))
+            #logger.info("packet[%d] = %d"%(i, len(temp)))
             packets.append(temp)
         logger.info("data/gzip length = %d/%d (%.0f%%)", length1, length0, length1/length0*100.0)
         return packets
@@ -505,20 +455,64 @@ class BLEDeviceManager(gatt.DeviceManager, object):
             if not device.mac_address in self.bles.keys():
                 ble = CaBotBLE(address=device.mac_address, ble_manager=self, cabot_manager=self.cabot_manager)
                 self.bles[device.mac_address] = ble
-                thread = threading.Thread(target=ble.start)
-                thread.start()
+                ble.thread = threading.Thread(target=ble.start)
+                ble.thread.start()
 
     def stop(self):
-        for ble in self.bles.values():
+        bles = list(self.bles.values())
+        for ble in bles:
             ble.req_stop()
+            ble.thread.join()
+            
 
+class DeviceStatus:
+    def __init__(self):
+        self.level = "Unknown"
+        self.devices = []
 
-class CaBotManager:
+    def ok(self):
+        self.level = "OK"
+
+    def error(self):
+        self.level = "Error"
+
+    @property
+    def json(self):
+        return {
+            'level': self.level,
+            'devices': self.devices
+        }
+
+class SystemStatus:
+    def __init__(self):
+        self.level = "Unknown"
+        self.diagnostics = []
+
+    def start(self):
+        self.level = "Starting"
+
+    def stop(self):
+        self.level = "Inactive"
+
+    def active(self):
+        self.level = "Active"
+
+    def inactive(self):
+        self.level = "Inactive"
+
+    @property
+    def json(self):
+        return {
+            'level': self.level,
+            'diagnostics': self.diagnostics
+        }
+
+class CaBotManager(BatteryDriverDelegate):
     def __init__(self):
         self.device_ok = False
-        self._device_status = {}
-        self.cabot_service_active = False
-        self._cabot_system_status = {}
+        self._device_status = DeviceStatus()
+        self._cabot_system_status = SystemStatus()
+        self._battery_status = BatteryStatus()
         self.systemctl_lock = threading.Lock()
         self.start_flag = False
         self.stop_run = None
@@ -533,7 +527,16 @@ class CaBotManager:
     def stop(self):
         if self.stop_run:
             self.stop_run.set()
-        
+
+    # BatteryDriverDelegate start
+    def battery_status(self, status):
+        self._battery_status = status
+        if status.shutdown or status.lowpower_shutdown:
+            logger.info("shutdown requested")
+            self.stop()
+            self.poweroff()
+    # BatteryDriverDelegate end
+
     @util.setInterval(5)
     def _run(self):
         self._run_once()
@@ -563,35 +566,17 @@ class CaBotManager:
         # logger.info(result.returncode)
         # logger.info(result.stdout)
         if result.returncode == 0:
-            self.device_ok = True
-            self._device_status = {
-                "devices": [
-                    { "name": "Summary", "status": self.device_ok, "message": "Device check is OK" }
-                ]
-            }
+            self._device_status.ok()
         else:
-            self.device_ok = False
-            self._device_status = {
-                "devices": [
-                    { "name": "Summary", "status": self.device_ok, "message": "Something is wrong" }
-                ]
-            }
+            self._device_status.error()
 
     def _check_service_active(self):
         if self._call(["systemctl", "--user", "--quiet", "is-active", "cabot"]) == 0:
-            self.cabot_service_active = True
+            self._cabot_system_status.active()
         else:
-            self.cabot_service_active = False
-        if diagnostics:
-            self._cabot_system_status = {
-                "is_active": self.cabot_service_active,
-                "components": [d.status for d in diagnostics]
-            }
-        else:
-            self._cabot_system_status = {
-                "is_active": self.cabot_service_active,
-                "components": []
-            }
+            self._cabot_system_status.inactive()
+
+        self._cabot_system_status.diagnostics = diagnostics
 
     def _call(self, command, lock=None):
         if lock is not None and not lock.acquire(blocking=False):
@@ -616,9 +601,11 @@ class CaBotManager:
 
     def start(self):
         self._call(["systemctl", "--user", "start", "cabot"], lock=self.systemctl_lock)
+        self._cabot_system_status.start()
 
     def stop(self):
         self._call(["systemctl", "--user", "stop", "cabot"], lock=self.systemctl_lock)
+        self._cabot_system_status.stop()
 
     def device_status(self):
         return self._device_status
@@ -626,14 +613,26 @@ class CaBotManager:
     def cabot_system_status(self):
         return self._cabot_system_status
 
+    def cabot_battery_status(self):
+        return self._battery_status
 
 def main():
     cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
     adapter_name = os.environ['CABOT_BLE_ADAPTOR'] if 'CABOT_BLE_ADAPTOR' in os.environ else "hci0"
     start_at_launch = (os.environ['CABOT_START_AT_LAUNCH'] == "1") if 'CABOT_START_AT_LAUNCH' in os.environ else False
 
+    port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else None
+    baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else None
+
+
     cabot_manager = CaBotManager()
     cabot_manager.run(start=start_at_launch)
+
+    if port_name is not None and baud is not None:
+        driver = BatteryDriver(port_name, baud, delegate=cabot_manager)
+        battery_driver_node = BatteryDriverNode(client, driver)
+        battery_thread = threading.Thread(target=driver.start)
+        battery_thread.start()
 
     ble_manager = BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
 
@@ -646,12 +645,19 @@ def main():
 
     try:
         ble_manager.run()
-    except:
+    except KeyboardInterrupt:
+        logger.info("keyboard interrupt")
+    except Exception as e:
         logger.info(traceback.format_exc())
     finally:
-        ble_manager.stop()
-        ble_manager._main_loop.quit()
-        client.terminate()
+        try:
+            driver.stop()
+            battery_thread.join()
+            ble_manager.stop()
+            ble_manager._main_loop.quit()
+            client.terminate()
+        except:
+            logger.info(traceback.format_exc())
 
 if __name__ == "__main__":
     main()
