@@ -44,7 +44,9 @@ from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
 
 CABOT_BLE_UUID = lambda _id: UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".format(_id))
-CABOT_BLE_VERSION = "20220314"
+CABOT_BLE_VERSION = "20220320"
+MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
+CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
 DEBUG=False
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -96,6 +98,20 @@ diagnostics = []
 def diagnostic_agg_callback(msg):
     global diagnostics
     diagnostics = msg['status']
+    for diagnostic in diagnostics:
+        # reduce floating number digits
+        for i in range(len(diagnostic['values'])-1, -1, -1):
+            value = diagnostic['values'][i]
+            if value['key'] == 'Minimum acceptable frequency (Hz)' or \
+               value['key'] == 'Maximum acceptable frequency (Hz)' or \
+               value['key'] == 'Events in window' or \
+               value['key'] == 'Events since startup':
+                diagnostic['values'].pop(i)
+                continue
+            try:
+                value['value'] = "%.2f"%(float(value['value']))
+            except:
+                pass
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -192,8 +208,8 @@ class BLENotifyChar:
         self.owner = owner
         self.uuid = uuid
 
-    def send_text(self, uuid, text):
-        self.owner.send_text(uuid, text)
+    def send_text(self, uuid, text, priority=10):
+        self.owner.send_text(uuid, text, priority)
 
 
 class VersionChar(BLENotifyChar):
@@ -240,7 +256,7 @@ class SpeakChar(BLENotifyChar):
         if force:
             text = "__force_stop__\n" + text
 
-        self.send_text(self.uuid, text)
+        self.send_text(self.uuid, text, priority=0)
         return True
 
 class EventChars:
@@ -285,20 +301,20 @@ class CaBotBLE:
 
         self.version_char = VersionChar(self, CABOT_BLE_UUID(0x00))
 
-        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x05), self.cabot_manager))
-        self.device_status_char = StatusChar(self, CABOT_BLE_UUID(0x06), cabot_manager.device_status, interval=5)
-        self.ros_status_char = StatusChar(self, CABOT_BLE_UUID(0x07), cabot_manager.cabot_system_status, interval=5)
-        self.battery_status_char = StatusChar(self, CABOT_BLE_UUID(0x08), cabot_manager.cabot_battery_status, interval=5)
+        self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x01), self.cabot_manager))
+        self.device_status_char = StatusChar(self, CABOT_BLE_UUID(0x02), cabot_manager.device_status, interval=5)
+        self.ros_status_char = StatusChar(self, CABOT_BLE_UUID(0x03), cabot_manager.cabot_system_status, interval=5)
+        self.battery_status_char = StatusChar(self, CABOT_BLE_UUID(0x04), cabot_manager.cabot_battery_status, interval=5)
 
-        self.chars.append(SummonsChar(self, CABOT_BLE_UUID(0x09)))
-        self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x10)))
+        self.chars.append(SummonsChar(self, CABOT_BLE_UUID(0x10)))
+        self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x11)))
+
+        self.speak_char = SpeakChar(self, CABOT_BLE_UUID(0x30))
+        self.event_char = EventChars(navi_uuid=CABOT_BLE_UUID(0x40),
+                                     content_uuid = CABOT_BLE_UUID(0x50),
+                                     sound_uuid = CABOT_BLE_UUID(0x60))
+
         self.chars.append(HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
-
-        self.speak_char = SpeakChar(self, CABOT_BLE_UUID(0x200))
-        self.event_char = EventChars(navi_uuid=CABOT_BLE_UUID(0x300),
-                                     content_uuid = CABOT_BLE_UUID(0x400),
-                                     sound_uuid = CABOT_BLE_UUID(0x500))
-
 
         self.adapter = pygatt.GATTToolBackend(max_read=2048)
         self.target = None
@@ -308,10 +324,10 @@ class CaBotBLE:
         self.alive = False
         self.ready = False
 
-        self.queue = queue.Queue()
+        self.queue = queue.PriorityQueue()
         self.check_queue_stop = self.check_queue()
 
-    def send_text(self, uuid, text):
+    def send_text(self, uuid, text, priority=10):
         data = ("%s"%(text)).encode("utf-8")
         if not self.ready:
             return
@@ -320,12 +336,14 @@ class CaBotBLE:
         except:
             logger.info("Could not get handle")
             return
-        self.queue.put((handle, data))
+        self.queue.put((priority, handle, data))
 
     def make_packets(self, data, size):
         length0 = len(data)
         data = bytearray(gzip.compress(data))
         length1 = len(data)
+        if length0 < length1:
+            return [data]
         packet_size = size - 4
         packets = []
         n = math.ceil(length1/packet_size)
@@ -342,11 +360,11 @@ class CaBotBLE:
     def check_queue(self):
         if self.queue.empty():
             return
-        (handle, data) = self.queue.get()
+        (priority, handle, data) = self.queue.get()
         start = time.time()
         try:
             total = 0
-            for packet in self.make_packets(data, 512):
+            for packet in self.make_packets(data, CHAR_WRITE_MAX_SIZE):
                 total += len(packet)
                 self.target.char_write_handle(handle, value=packet, wait_for_response=True, timeout=2)
             logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
@@ -366,8 +384,8 @@ class CaBotBLE:
 
                 try:
                     logger.info("trying to connect to %s", self.address)
-                    self.target = self.adapter.connect(self.address, timeout=15, address_type=pygatt.BLEAddressType.random)
-                    self.target.exchange_mtu(64)
+                    self.target = self.adapter.connect(self.address, timeout=5, address_type=pygatt.BLEAddressType.random)
+                    self.target.exchange_mtu(MTU_SIZE)
                 except pygatt.exceptions.NotConnectedError:
                     logger.error("device not connected %s", self.address)
                     break
@@ -415,6 +433,7 @@ class CaBotBLE:
         self.ready = False
         self.device_status_char.stop()
         self.ros_status_char.stop()
+        self.battery_status_char.stop()
         self.check_queue_stop.set()
         if self.target is not None:
             try:
@@ -476,6 +495,27 @@ class DeviceStatus:
     def error(self):
         self.level = "Error"
 
+    def set_json(self, text):
+        try:
+            data=json.loads(text)
+            self.devices = []
+            if 'devices' in data:
+                for dev in data['devices']:
+                    device = {
+                        'name': "{} {}".format(dev['device_type'], dev['device_model']),
+                        'level': "OK" if dev['device_status'] == "0" else "Error",
+                        'message': dev['device_message'],
+                        'values': []
+                    }
+                    for key in dev:
+                        device['values'].append({
+                            'key': key,
+                            'value': dev[key]
+                        })
+                    self.devices.append(device)
+        except:
+            logger.info(traceback.format_exc())
+
     @property
     def json(self):
         return {
@@ -499,6 +539,14 @@ class SystemStatus:
 
     def inactive(self):
         self.level = "Inactive"
+
+    def set_diagnostics(self, diagnostics):
+        self.diagnostics = diagnostics
+        has_error = False
+        for diagnostic in self.diagnostics:
+            has_error = has_error or diagnostic['level'] > 0
+        if has_error:
+            self.level = "Error"
 
     @property
     def json(self):
@@ -562,13 +610,14 @@ class CaBotManager(BatteryDriverDelegate):
 
     def _check_device_status(self):
         # ToDo: call check_device_status
-        result = subprocess.run(["sudo", "docker-compose", "run", "--rm",  "check"], capture_output=True, text=True, cwd="/opt/cabot-device-check")
+        result = subprocess.run(["sudo", "docker-compose", "run", "--rm",  "checkj"], capture_output=True, text=True, cwd="/opt/cabot-device-check")
         # logger.info(result.returncode)
         # logger.info(result.stdout)
         if result.returncode == 0:
             self._device_status.ok()
         else:
             self._device_status.error()
+        self._device_status.set_json(result.stdout)
 
     def _check_service_active(self):
         if self._call(["systemctl", "--user", "--quiet", "is-active", "cabot"]) == 0:
@@ -576,7 +625,7 @@ class CaBotManager(BatteryDriverDelegate):
         else:
             self._cabot_system_status.inactive()
 
-        self._cabot_system_status.diagnostics = diagnostics
+        self._cabot_system_status.set_diagnostics(diagnostics)
 
     def _call(self, command, lock=None):
         if lock is not None and not lock.acquire(blocking=False):

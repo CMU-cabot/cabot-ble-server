@@ -286,18 +286,35 @@ class BatteryStatus:
             'level': level,
             'message': percent(self.battery_capacity),
             'hardware_id': "cabot2-ace-battery-control",
-            'values': {
-                'Jetson power': on_off(self.power_jetson),
-                '12V power': on_off(self.power_12v),
-                '5V power': on_off(self.power_5v),
-                'ODrive power': on_off(self.power_odrive),
-                'Battery Capacity': percent(self.battery_capacity),
-                'Jetson current': milliampere(self.jetson_current),
-                'Loop count': str(self.loop_cnt),
-                'Shutdown Request': str(self.shutdown),
-                'Lowpower Shutdown Request': str(self.lowpower_shutdown)
-                }
-            }
+            'values': [{
+                'key': 'Battery Capacity',
+                'value': percent(self.battery_capacity)
+            },{
+                'key': '12V power',
+                'value': on_off(self.power_12v)
+            },{
+                'key': '5V power',
+                'value': on_off(self.power_5v)
+            },{
+                'key': 'ODrive power',
+                'value': on_off(self.power_odrive)
+            },{
+                'key': 'Jetson power',
+                'value': on_off(self.power_jetson)
+            },{
+                'key': 'Jetson current',
+                'value': milliampere(self.jetson_current)
+            },{
+                'key': 'Shutdown Request',
+                'value': str(self.shutdown)
+            },{
+                'key': 'Lowpower Shutdown Request',
+                'value': str(self.lowpower_shutdown)
+            },{
+                'key': 'Loop count',
+                'value': str(self.loop_cnt)
+            }]
+        }
 
 def main():
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else '/dev/ttyACM0'
