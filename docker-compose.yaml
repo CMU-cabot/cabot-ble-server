@@ -10,6 +10,7 @@ services:
       - /sys/devices:/sys/devices
       - /var/lib/bluetooth:/var/lib/bluetooth
       - /run/dbus:/run/dbus
+      - /run/udev:/run/udev:ro
       - /var/run/dbus:/var/run/dbus
 # for systemctl
       - /run/systemd/system:/run/systemd/system
@@ -27,6 +28,15 @@ services:
       - CABOT_START_AT_LAUNCH
       - CABOT_ACE_BATTERY_PORT
       - CABOT_ACE_BATTERY_BAUD
+      - CABOT_REALSENSE_SERIAL_1
+      - CABOT_REALSENSE_SERIAL_2
+      - CABOT_REALSENSE_SERIAL_3
+      - CABOT_CAMERA_NAME_1
+      - CABOT_CAMERA_NAME_2
+      - CABOT_CAMERA_NAME_3
+      - LIDAR_IF
+      - LIDAR_IP
+      - MICRO_CONTROLLER
 # required for display, device, and systemctl
     privileged: true
 # device, bluetooth

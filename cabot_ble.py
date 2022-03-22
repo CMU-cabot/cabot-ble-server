@@ -610,7 +610,7 @@ class CaBotManager(BatteryDriverDelegate):
 
     def _check_device_status(self):
         # ToDo: call check_device_status
-        result = subprocess.run(["sudo", "docker-compose", "run", "--rm",  "checkj"], capture_output=True, text=True, cwd="/opt/cabot-device-check")
+        result = subprocess.run(["sudo", "./check_device_status.sh", "-j"], capture_output=True, text=True, cwd="/opt/cabot-device-check")
         # logger.info(result.returncode)
         # logger.info(result.stdout)
         if result.returncode == 0:
