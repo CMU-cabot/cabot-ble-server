@@ -338,12 +338,15 @@ class CaBotBLE:
             return
         self.queue.put((priority, handle, data))
 
-    def make_packets(self, data, size):
-        length0 = len(data)
-        data = bytearray(gzip.compress(data))
+    def make_packets(self, orig_data, size):
+        length0 = len(orig_data)
+        data = bytearray(gzip.compress(orig_data))
         length1 = len(data)
         if length0 < length1:
-            return [data]
+            temp = bytearray(orig_data)
+            temp[0:0] = length0.to_bytes(2,"big")
+            temp[2:2] = int(0).to_bytes(2,"big")
+            return [temp]
         packet_size = size - 4
         packets = []
         n = math.ceil(length1/packet_size)
@@ -610,7 +613,7 @@ class CaBotManager(BatteryDriverDelegate):
 
     def _check_device_status(self):
         # ToDo: call check_device_status
-        result = subprocess.run(["sudo", "./check_device_status.sh", "-j"], capture_output=True, text=True, cwd="/opt/cabot-device-check")
+        result = subprocess.run(["sudo", "-E", "./check_device_status.sh", "-j"], capture_output=True, text=True, env=os.environ.copy())
         # logger.info(result.returncode)
         # logger.info(result.stdout)
         if result.returncode == 0:
