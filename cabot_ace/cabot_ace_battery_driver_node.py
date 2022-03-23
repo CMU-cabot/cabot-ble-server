@@ -45,7 +45,6 @@ class BatteryDriverNode:
     @util.setInterval(1.0)
     def polling_ros(self):
         if not self.client.is_connected:
-            time.sleep(1)
             self.connected = False
         else:
             if not self.connected:

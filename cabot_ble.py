@@ -37,6 +37,7 @@ import pygatt
 import gatt
 
 import roslibpy
+from roslibpy.comm import RosBridgeClientFactory
 
 from cabot import util
 from cabot.event import BaseEvent
@@ -53,6 +54,9 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 
+# settings for roslibpy reconnection
+RosBridgeClientFactory.set_initial_delay(1)
+RosBridgeClientFactory.set_max_delay(3)
 client = roslibpy.Ros(host='localhost', port=9091)
 ROS_CLIENT_CONNECTED = [False]
 
@@ -60,6 +64,7 @@ subscriber = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/Diagnos
 
 @util.setInterval(1.0)
 def polling_ros():
+    global client
     if not client.is_connected:
         if ROS_CLIENT_CONNECTED[0]:
             logger.info("ROS bridge has been disconnected")
@@ -72,7 +77,7 @@ def polling_ros():
             logger.info("subscribe to diagnostic_agg")
             subscriber.subscribe(diagnostic_agg_callback)
             ROS_CLIENT_CONNECTED[0] = True
-        except Exception:
+        except Exception as e:
             # except Failed to connect to ROS
             pass
     else:
@@ -241,6 +246,7 @@ class StatusChar(BLENotifyChar):
         self.send_text(self.uuid, status)
 
     def stop(self):
+        self.func().stop()
         self.loopStop.set()
 
 
@@ -505,7 +511,8 @@ class DeviceStatus:
             if 'devices' in data:
                 for dev in data['devices']:
                     device = {
-                        'name': "{} {}".format(dev['device_type'], dev['device_model']),
+                        'type': dev['device_type'],
+                        'model': dev['device_model'],
                         'level': "OK" if dev['device_status'] == "0" else "Error",
                         'message': dev['device_message'],
                         'values': []
@@ -526,16 +533,19 @@ class DeviceStatus:
             'devices': self.devices
         }
 
+    def stop(self):
+        pass
+
 class SystemStatus:
     def __init__(self):
         self.level = "Unknown"
         self.diagnostics = []
 
-    def start(self):
-        self.level = "Starting"
+    def activating(self):
+        self.level = "Activating"
 
-    def stop(self):
-        self.level = "Inactive"
+    def deactivating(self):
+        self.level = "Deactivating"
 
     def active(self):
         self.level = "Active"
@@ -543,13 +553,11 @@ class SystemStatus:
     def inactive(self):
         self.level = "Inactive"
 
+    def error(self):
+        self.level = "Error"
+
     def set_diagnostics(self, diagnostics):
         self.diagnostics = diagnostics
-        has_error = False
-        for diagnostic in self.diagnostics:
-            has_error = has_error or diagnostic['level'] > 0
-        if has_error:
-            self.level = "Error"
 
     @property
     def json(self):
@@ -558,9 +566,12 @@ class SystemStatus:
             'diagnostics': self.diagnostics
         }
 
+    def stop(self):
+        self.deactivating()
+        self.diagnostics = []
+
 class CaBotManager(BatteryDriverDelegate):
     def __init__(self):
-        self.device_ok = False
         self._device_status = DeviceStatus()
         self._cabot_system_status = SystemStatus()
         self._battery_status = BatteryStatus()
@@ -598,52 +609,60 @@ class CaBotManager(BatteryDriverDelegate):
             self._check_device_status()
             self._check_service_active()
             self.run_count = 0
-            if self.device_ok and self.cabot_service_active:
-                self.check_interval = min(self.check_interval+1, 1)
-            else:
-                self.check_interval = 1
 
-        # logger.info("CaBotManager run %d %d %d %d %d",
-        #             self.start_flag, self.device_ok, self.cabot_service_active, self.run_count, self.check_interval)
         if self.start_flag:
-            if self.device_ok:
+            if self._device_status.level == "OK":
                 self.start_flag = False
-                if not self.cabot_service_active:
+                if self._cabot_system_status.level != "Active":
                     self.start()
+            else:
+                logger.info("Start at launch is requested, but device is not OK")
 
     def _check_device_status(self):
-        # ToDo: call check_device_status
-        result = subprocess.run(["sudo", "-E", "./check_device_status.sh", "-j"], capture_output=True, text=True, env=os.environ.copy())
-        # logger.info(result.returncode)
-        # logger.info(result.stdout)
-        if result.returncode == 0:
+        result = self._runprocess(["sudo", "-E", "./check_device_status.sh", "-j"])
+        if result and result.returncode == 0:
             self._device_status.ok()
         else:
             self._device_status.error()
         self._device_status.set_json(result.stdout)
 
     def _check_service_active(self):
-        if self._call(["systemctl", "--user", "--quiet", "is-active", "cabot"]) == 0:
+        result = self._runprocess(["systemctl", "--user", "is-active", "cabot"])
+        if not result:
+            return
+        if result.returncode == 0:
             self._cabot_system_status.active()
         else:
-            self._cabot_system_status.inactive()
+            if result.stdout.strip() == "inactive":
+                self._cabot_system_status.inactive()
+            elif result.stdout.strip() == "failed":
+                self._cabot_system_status.inactive()
+            elif result.stdout.strip() == "deactivating":
+                self._cabot_system_status.deactivating()
+            else:
+                logger.info("check_service_active unknown status: %s", result.stdout.strip())
 
+        global diagnostics
         self._cabot_system_status.set_diagnostics(diagnostics)
+        diagnostics = []
+
+    def _runprocess(self, command):
+        return subprocess.run(command, capture_output=True, text=True, env=os.environ.copy())
 
     def _call(self, command, lock=None):
+        result = 0
         if lock is not None and not lock.acquire(blocking=False):
             logger.info("lock could not be acquired")
-            return
-        returncode = 1
+            return result
         try:
             # logger.info("calling %s", str(command))
-            returncode = subprocess.call(command)
+            result = subprocess.call(command)
         except:
             logger.error(traceback.format_exc())
         finally:
             if lock is not None:
                 lock.release()
-        return returncode
+        return result
 
     def reboot(self):
         self._call(["sudo", "systemctl", "reboot"], lock=self.systemctl_lock)
@@ -653,11 +672,11 @@ class CaBotManager(BatteryDriverDelegate):
 
     def start(self):
         self._call(["systemctl", "--user", "start", "cabot"], lock=self.systemctl_lock)
-        self._cabot_system_status.start()
+        self._cabot_system_status.activating()
 
     def stop(self):
         self._call(["systemctl", "--user", "stop", "cabot"], lock=self.systemctl_lock)
-        self._cabot_system_status.stop()
+        self._cabot_system_status.deactivating()
 
     def device_status(self):
         return self._device_status
