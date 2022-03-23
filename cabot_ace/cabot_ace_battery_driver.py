@@ -319,10 +319,19 @@ class BatteryStatus:
     def stop(self):
         pass
 
+class PrintDelegate(BatteryDriverDelegate):
+    def __init__(self):
+        self.count=0
+    def battery_status(self, status):
+        self.count+=1
+        if self.count%10==0:
+            print(status)
+            print("------")
+
 def main():
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else '/dev/ttyACM0'
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else 115200
-    BatteryDriver(port_name, baud).start()
+    BatteryDriver(port_name, baud, PrintDelegate()).start()
 
 if __name__ == "__main__":
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
