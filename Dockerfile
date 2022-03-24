@@ -86,6 +86,6 @@ COPY cabot_ace $HOME/cabot_ace
 COPY cabot_ble.py $HOME/cabot_ble.py
 COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/check_device_status.sh
-#COPY cabot-device-check/locale $HOME/locale
+COPY cabot-device-check/locale $HOME/locale
 
 ENTRYPOINT [ "/entrypoint.sh" ]
