@@ -135,7 +135,7 @@ class BatteryDriver:
         data[2] = command
         data[3] = 0x08
         data[4] = arg0
-        data[12] = BatteryDriver.checksum(data[0:12])
+        data[12] = BatteryDriver.checksum(data[4:12])
         self.write_queue.put(bytes(data))
 
 
