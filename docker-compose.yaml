@@ -38,7 +38,7 @@ services:
       - CABOT_CAMERA_NAME_3
       - CABOT_JETSON_CONFIG
       - CABOT_USER_NAME
-      - CABOT_ID_DIR=${CABOT_ID_DIR:-/home/developer/.ssh}
+      - CABOT_ID_DIR=/home/developer/.ssh
       - CABOT_ID_FILE
       - LIDAR_IF
       - LIDAR_IP
