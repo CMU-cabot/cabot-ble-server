@@ -7,14 +7,14 @@ BLE server to monitor/control [CaBot](https://github.com/cmu-cabot/cabot)
 - edit `.env` file
 
 ```
-docker-compose build
-sudo ./install.sh
+docker-compose build --build-arg UID=$UID
+./install.sh
 ```
 
 # Uninstall
 
 ```
-sudo ./uninstall.sh
+./uninstall.sh
 ```
 
 
@@ -59,7 +59,7 @@ CABOT_JETSON_CONFIG="D:192.168.1.51:rs1 D:192.168.1.52:rs2 D:192.168.1.53:rs3"
 # Test
 - launch ble server
 ```
-docker-compose build
+docker-compose build --build-arg UID=$UID
 docker-compose up ble
 ```
 
