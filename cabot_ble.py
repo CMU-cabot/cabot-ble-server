@@ -699,6 +699,7 @@ def main():
     cabot_manager = CaBotManager()
     cabot_manager.run(start=start_at_launch)
 
+    driver = None
     if port_name is not None and baud is not None:
         driver = BatteryDriver(port_name, baud, delegate=cabot_manager)
         battery_driver_node = BatteryDriverNode(client, driver)
@@ -722,8 +723,9 @@ def main():
         logger.info(traceback.format_exc())
     finally:
         try:
-            driver.stop()
-            battery_thread.join()
+            if driver:
+                driver.stop()
+                battery_thread.join()
             ble_manager.stop()
             ble_manager._main_loop.quit()
             client.terminate()
