@@ -22,6 +22,8 @@ services:
       - /usr/bin/docker:/usr/bin/docker
       - /usr/local/bin/docker-compose:/usr/local/bin/docker-compose
       - /var/run/docker.sock:/var/run/docker.sock
+# for ssh in check_device_status.sh
+      - ~/.ssh:/home/developer/.ssh
     environment:
       - CABOT_NAME
       - CABOT_BLE_ADAPTOR
@@ -34,6 +36,10 @@ services:
       - CABOT_CAMERA_NAME_1
       - CABOT_CAMERA_NAME_2
       - CABOT_CAMERA_NAME_3
+      - CABOT_JETSON_CONFIG
+      - CABOT_USER_NAME
+      - CABOT_ID_DIR=${CABOT_ID_DIR:-/home/developer/.ssh}
+      - CABOT_ID_FILE
       - LIDAR_IF
       - LIDAR_IP
       - MICRO_CONTROLLER
