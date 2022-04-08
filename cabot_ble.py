@@ -242,8 +242,9 @@ class StatusChar(BLENotifyChar):
             self.notify()
 
     def notify(self):
-        status = json.dumps(self.func().json, separators=(',', ':'))
-        self.send_text(self.uuid, status)
+        if self.func():
+            status = json.dumps(self.func().json, separators=(',', ':'))
+            self.send_text(self.uuid, status)
 
     def stop(self):
         self.func().stop()
@@ -559,6 +560,13 @@ class SystemStatus:
     def set_diagnostics(self, diagnostics):
         self.diagnostics = diagnostics
 
+    def is_active(self):
+        if self.level == "Active":
+            return True
+        if len(self.diagnostics) > 0:
+            return True
+        return False
+
     @property
     def json(self):
         return {
@@ -574,7 +582,7 @@ class CaBotManager(BatteryDriverDelegate):
     def __init__(self):
         self._device_status = DeviceStatus()
         self._cabot_system_status = SystemStatus()
-        self._battery_status = BatteryStatus()
+        self._battery_status = None
         self.systemctl_lock = threading.Lock()
         self.start_flag = False
         self.stop_run = None
@@ -619,7 +627,10 @@ class CaBotManager(BatteryDriverDelegate):
                 logger.info("Start at launch is requested, but device is not OK")
 
     def _check_device_status(self):
-        result = self._runprocess(["sudo", "-E", "./check_device_status.sh", "-j"])
+        if self._cabot_system_status.is_active():
+            result = self._runprocess(["sudo", "-E", "./check_device_status.sh", "-j", "-s"])
+        else:
+            result = self._runprocess(["sudo", "-E", "./check_device_status.sh", "-j"])
         if result and result.returncode == 0:
             self._device_status.ok()
         else:
@@ -708,9 +719,12 @@ def main():
 
     ble_manager = BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
 
+    result = subprocess.call(["sudo", "rfkill", "unblock", "bluetooth"])
     # power on the adapter
-    if not ble_manager.is_adapter_powered:
+    while not ble_manager.is_adapter_powered:
+        logger.info("Bluetooth is off, so powering on")
         ble_manager.is_adapter_powered = True
+        time.sleep(1)
 
     ble_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
     #ble_manager.start_discovery()

@@ -61,6 +61,7 @@ RUN apt update && \
 	python3-gi \
 	python3-pip \
 	python-is-python3 \
+	rfkill \
 	sudo \
 	systemd \
 	&& \
