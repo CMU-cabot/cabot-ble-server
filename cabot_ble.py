@@ -266,8 +266,9 @@ class SpeakChar(BLENotifyChar):
         self.send_text(self.uuid, text, priority=0)
         return True
 
-class EventChars:
-    def __init__(self, navi_uuid, content_uuid, sound_uuid):
+class EventChars(BLENotifyChar):
+    def __init__(self, owner, navi_uuid, content_uuid, sound_uuid):
+        super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
         self.navi_uuid = navi_uuid
         self.content_uuid = content_uuid
         self.sound_uuid = sound_uuid
@@ -306,6 +307,9 @@ class CaBotBLE:
         self.cabot_manager = cabot_manager
         self.chars = []
 
+        # define event_topic for event publication used in char classes
+        self.event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+
         self.version_char = VersionChar(self, CABOT_BLE_UUID(0x00))
 
         self.chars.append(CabotManageChar(self, CABOT_BLE_UUID(0x01), self.cabot_manager))
@@ -317,7 +321,7 @@ class CaBotBLE:
         self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x11)))
 
         self.speak_char = SpeakChar(self, CABOT_BLE_UUID(0x30))
-        self.event_char = EventChars(navi_uuid=CABOT_BLE_UUID(0x40),
+        self.event_char = EventChars(self, navi_uuid=CABOT_BLE_UUID(0x40),
                                      content_uuid = CABOT_BLE_UUID(0x50),
                                      sound_uuid = CABOT_BLE_UUID(0x60))
 
