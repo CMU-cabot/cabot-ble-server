@@ -10,6 +10,7 @@ import queue
 import struct
 import time
 import serial
+import argparse
 
 from cabot import util
 
@@ -38,20 +39,23 @@ class BatteryDriver:
         self.is_alive = True
 
 
+    def _open_serial(self):
+        logger.info("opening serial %s", self.port_name)
+        while self.is_alive:
+            try:
+                self.port = serial.Serial(self.port_name, self.baud, timeout=5, write_timeout=10)
+                break
+            except serial.SerialException as e:
+                logging.error("%s", e)
+                time.sleep(3)
+        logger.info("serial port opened");
+
+
     def start(self):
         sleep_time = 3
         while self.is_alive:
             try:
-                driver = None
-                logger.info("opening serial %s", self.port_name)
-                while self.is_alive:
-                    try:
-                        self.port = serial.Serial(self.port_name, self.baud, timeout=5, write_timeout=10)
-                        break
-                    except serial.SerialException as e:
-                        logging.error("%s", e)
-                        time.sleep(3)
-                logger.info("serial port opened");
+                self._open_serial()
                 self._run()
             except KeyboardInterrupt as e:
                 logger.info("KeyboardInterrupt")
@@ -81,8 +85,7 @@ class BatteryDriver:
                 traceback.print_exc(file=sys.stdout)
                 sys.exit()
             finally:
-                if driver:
-                    driver.stop()
+                self.stop()
 
 
     def stop(self):
@@ -138,26 +141,28 @@ class BatteryDriver:
         data[12] = BatteryDriver.checksum(data[4:12])
         self.write_queue.put(bytes(data))
 
-
+    def _process_write_queue_once(self):
+        if self.write_queue.empty():
+            time.sleep(0.01)
+        else:
+            data = self.write_queue.get()
+            while self.is_alive:
+                try:
+                    if isinstance(data, bytes):
+                        self._write(data)
+                    else:
+                        logger.error("Trying to write invalid data type: %s" % type(data))
+                    break
+                except serial.SerialTimeoutException as exc:
+                    logger.error('Write timeout: %s' % exc)
+                    time.sleep(1)
+                except RuntimeError as exc:
+                    logger.error('Write thread exception: %s' % exc)
+                    break
+    
     def _process_write_queue(self):
         while self.is_alive:
-            if self.write_queue.empty():
-                time.sleep(0.01)
-            else:
-                data = self.write_queue.get()
-                while self.is_alive:
-                    try:
-                        if isinstance(data, bytes):
-                            self._write(data)
-                        else:
-                            logger.error("Trying to write invalid data type: %s" % type(data))
-                        break
-                    except serial.SerialTimeoutException as exc:
-                        logger.error('Write timeout: %s' % exc)
-                        time.sleep(1)
-                    except RuntimeError as exc:
-                        logger.error('Write thread exception: %s' % exc)
-                        break
+            self._process_write_queue_once()
 
 
     def _write(self, data):
@@ -219,6 +224,11 @@ class BatteryDriver:
                         if self.delegate:
                             self.delegate.battery_status(info)
                 state = 0
+
+
+    def process_command_once(self):
+        self._open_serial()
+        self._process_write_queue_once()
 
 
 
@@ -331,7 +341,21 @@ class PrintDelegate(BatteryDriverDelegate):
 def main():
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else '/dev/ttyACM0'
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else 115200
-    BatteryDriver(port_name, baud, PrintDelegate()).start()
+    
+    driver = BatteryDriver(port_name, baud, PrintDelegate())
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-od","--odrive_power")
+    
+    args = parser.parse_args()
+    
+    if args.odrive_power:
+        driver.set_odrive_power(0 if "0" == args.odrive_power else 1)
+        driver.process_command_once()
+        print("set odrive_power: {}".format(args.odrive_power))
+    else:
+        driver.start()
+
 
 if __name__ == "__main__":
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
