@@ -66,5 +66,8 @@ docker-compose up ble
 - launch cabot_ace battery driver alone
 ```
 CABOT_ACE_BATTERY_PORT=/dev/ttyXXXX CABOT_ACE_BATTERY_BAUD=115200 python3 -m cabot_ace.cabot_ace_battery_driver
+
+options
+-od,　　--odrive_power    #　turn on[1] or off[0] odrive motor controller.
 ```
 
