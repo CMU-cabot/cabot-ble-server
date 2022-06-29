@@ -61,39 +61,39 @@ class BatteryDriverNode:
         #self.service5.advertise(self.set_lowpower_shutdown_threshold)
 
     def turn_jetson_switch_on(self, req, res):
-        self.control.turn_jetson_switch_on()
+        self.driver.turn_jetson_switch_on()
         return True
 
     def set_12v_power(self, req, res):
         if req['data']:
-            self.control.set_12v_power(1)
+            self.driver.set_12v_power(1)
         else:
-            self.control.set_12v_power(0)
+            self.driver.set_12v_power(0)
         res['success'] = True
         return True
 
     def set_5v_power(self, req, res):
         if req['data']:
-            self.control.set_5v_power(1)
+            self.driver.set_5v_power(1)
         else:
-            self.control.set_5v_power(0)
+            self.driver.set_5v_power(0)
         res['success'] = True
         return True
 
     def set_odrive_power(self, req, res):
         if req['data']:
-            self.control.set_odrive_power(1)
+            self.driver.set_odrive_power(1)
         else:
-            self.control.set_odrive_power(0)
+            self.driver.set_odrive_power(0)
         res['success'] = True
         return True
 
     def shutdown(self, req, res):
-        self.control.shutdown()
+        self.driver.shutdown()
         return True
 
     def set_lowpower_shutdown_threshold(self, req, res):
-        self.control.set_lowpower_shutdown_threshold(msg['value'])
+        self.driver.set_lowpower_shutdown_threshold(msg['value'])
         res['success'] = True
         return True
 
