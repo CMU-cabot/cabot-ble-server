@@ -247,7 +247,8 @@ class StatusChar(BLENotifyChar):
             self.send_text(self.uuid, status)
 
     def stop(self):
-        self.func().stop()
+        if self.func():
+            self.func().stop()
         self.loopStop.set()
 
 
