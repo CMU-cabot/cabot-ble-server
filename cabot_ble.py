@@ -299,6 +299,14 @@ class EventChars(BLENotifyChar):
         if event.subtype == "sound":
             self.send_text(self.sound_uuid, event.param)
 
+class SignRecoChar(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def handleSignReco(self, text):
+        if not self.owner.ready:
+            return None
+        self.send_text(self.uuid, text)
 
 class CaBotBLE:
 
@@ -325,6 +333,7 @@ class CaBotBLE:
         self.event_char = EventChars(self, navi_uuid=CABOT_BLE_UUID(0x40),
                                      content_uuid = CABOT_BLE_UUID(0x50),
                                      sound_uuid = CABOT_BLE_UUID(0x60))
+        self.sign_reco_char = SignRecoChar(self, CABOT_BLE_UUID(0x70))
 
         self.chars.append(HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
 
@@ -466,8 +475,10 @@ class BLEDeviceManager(gatt.DeviceManager, object):
         self.cabot_manager=cabot_manager
         logger.info("cabot_name: %s", self.cabot_name)
         self.bles = {}
-        self.service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
-        self.service.advertise(self.handleSpeak)
+        self.speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
+        self.speak_service.advertise(self.handleSpeak)
+        self.sign_reco_service = roslibpy.Service(client, '/sign_reco', 'std_srvs/Trigger')
+        self.sign_reco_service.advertise(self.handleSignReco)
 
     def handleSpeak(self, req, res):
         logger.info("/speak request (%s)", str(req))
@@ -475,6 +486,15 @@ class BLEDeviceManager(gatt.DeviceManager, object):
             if ble.speak_char:
                 ble.speak_char.handleSpeak(req=req)
         res['result'] = True
+        return True
+
+    def handleSignReco(self, req, res):
+        logger.info("/sign_reco request")
+        for ble in self.bles.values():
+            if ble.sign_reco_char:
+                ble.sign_reco_char.handleSignReco(text="normal")
+        res['success'] = True
+        res['message'] = ""
         return True
 
     def on_terminate(self, bledev):
