@@ -63,6 +63,7 @@ client = roslibpy.Ros(host='localhost', port=9091)
 ROS_CLIENT_CONNECTED = [False]
 
 diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
+log_topic = roslibpy.Topic(client, '/ble_log', 'std_msgs/String')
 event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 
 @util.setInterval(1.0)
@@ -146,6 +147,19 @@ class BLESubChar:
             self.valid = True
         except pygatt.exceptions.BLEError:
             logger.info("could not connect to char %s", self.uuid)
+
+
+class CabotLogChar(BLESubChar):
+    def __init__(self, owner, uuid, manager):
+        super().__init__(owner, uuid)
+        self.manager = manager
+
+    def callback(self, handle, value):
+        value = value.decode("utf-8")
+        log_topic.publish(roslibpy.Message({'data': str(value)}))
+
+    def not_found(self):
+        logger.error("%s is not implemented", self.uuid)
 
 
 class CabotManageChar(BLESubChar):
@@ -329,6 +343,7 @@ class CaBotBLE:
         self.device_status_char = StatusChar(self, CABOT_BLE_UUID(0x02), cabot_manager.device_status, interval=5)
         self.ros_status_char = StatusChar(self, CABOT_BLE_UUID(0x03), cabot_manager.cabot_system_status, interval=5)
         self.battery_status_char = StatusChar(self, CABOT_BLE_UUID(0x04), cabot_manager.cabot_battery_status, interval=5)
+        self.chars.append(CabotLogChar(self, CABOT_BLE_UUID(0x05), self.cabot_manager))
 
         self.chars.append(SummonsChar(self, CABOT_BLE_UUID(0x10)))
         self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x11)))
