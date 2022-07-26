@@ -50,6 +50,8 @@ MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
 DEBUG=False
 
+ble_manager = None
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
@@ -60,7 +62,8 @@ RosBridgeClientFactory.set_max_delay(3)
 client = roslibpy.Ros(host='localhost', port=9091)
 ROS_CLIENT_CONNECTED = [False]
 
-subscriber = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
+diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
+event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 
 @util.setInterval(1.0)
 def polling_ros():
@@ -75,7 +78,9 @@ def polling_ros():
             client.run(1.0)
             logger.info("ROS bridge is connected")
             logger.info("subscribe to diagnostic_agg")
-            subscriber.subscribe(diagnostic_agg_callback)
+            diagnostics_topic.subscribe(diagnostic_agg_callback)
+            event_topic.subscribe(event_callback)
+
             ROS_CLIENT_CONNECTED[0] = True
         except Exception as e:
             # except Failed to connect to ROS
@@ -117,6 +122,10 @@ def diagnostic_agg_callback(msg):
                 value['value'] = "%.2f"%(float(value['value']))
             except:
                 pass
+
+def event_callback(msg):
+    if ble_manager:
+        ble_manager.handleEventCallback(msg)
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -267,17 +276,15 @@ class SpeakChar(BLENotifyChar):
         self.send_text(self.uuid, text, priority=0)
         return True
 
+
 class EventChars(BLENotifyChar):
     def __init__(self, owner, navi_uuid, content_uuid, sound_uuid):
         super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
         self.navi_uuid = navi_uuid
         self.content_uuid = content_uuid
         self.sound_uuid = sound_uuid
-        self.event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
-        self.event_topic.subscribe(self._event_callback)
 
-
-    def _event_callback(self, msg):
+    def handleEventCallback(self, msg):
         event = BaseEvent.parse(msg['data'])
         if event is None:
             logger.error("cabot event %s cannot be parsed", msg['data'])
@@ -299,7 +306,6 @@ class EventChars(BLENotifyChar):
         if event.subtype == "sound":
             self.send_text(self.sound_uuid, event.param)
 
-
 class CaBotBLE:
 
     def __init__(self, address, ble_manager, cabot_manager):
@@ -307,9 +313,6 @@ class CaBotBLE:
         self.ble_manager = ble_manager
         self.cabot_manager = cabot_manager
         self.chars = []
-
-        # define event_topic for event publication used in char classes
-        self.event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 
         self.version_char = VersionChar(self, CABOT_BLE_UUID(0x00))
 
@@ -341,6 +344,9 @@ class CaBotBLE:
 
     def send_text(self, uuid, text, priority=10):
         data = ("%s"%(text)).encode("utf-8")
+        self.send_data(uuid, data, priority)
+
+    def send_data(self, uuid, data, priority=10):
         if not self.ready:
             return
         try:
@@ -466,8 +472,8 @@ class BLEDeviceManager(gatt.DeviceManager, object):
         self.cabot_manager=cabot_manager
         logger.info("cabot_name: %s", self.cabot_name)
         self.bles = {}
-        self.service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
-        self.service.advertise(self.handleSpeak)
+        self.speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
+        self.speak_service.advertise(self.handleSpeak)
 
     def handleSpeak(self, req, res):
         logger.info("/speak request (%s)", str(req))
@@ -476,6 +482,11 @@ class BLEDeviceManager(gatt.DeviceManager, object):
                 ble.speak_char.handleSpeak(req=req)
         res['result'] = True
         return True
+
+    def handleEventCallback(self, msg):
+        for ble in self.bles.values():
+            if ble.event_char:
+                ble.event_char.handleEventCallback(msg)
 
     def on_terminate(self, bledev):
         logger.info("terminate %s", bledev.address)
@@ -704,6 +715,7 @@ class CaBotManager(BatteryDriverDelegate):
         return self._battery_status
 
 def main():
+    global ble_manager
     cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
     adapter_name = os.environ['CABOT_BLE_ADAPTOR'] if 'CABOT_BLE_ADAPTOR' in os.environ else "hci0"
     start_at_launch = (os.environ['CABOT_START_AT_LAUNCH'] == "1") if 'CABOT_START_AT_LAUNCH' in os.environ else False
