@@ -26,7 +26,9 @@ import queue
 import os
 import time
 import json
+import struct
 import threading
+import time
 import traceback
 import logging
 import re
@@ -48,6 +50,7 @@ CABOT_BLE_UUID = lambda _id: UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".form
 CABOT_BLE_VERSION = "20220320"
 MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
+ODOM_FREQUENCY = 2.0
 DEBUG=False
 
 ble_manager = None
@@ -65,6 +68,7 @@ ROS_CLIENT_CONNECTED = [False]
 diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
 log_topic = roslibpy.Topic(client, '/ble_log', 'std_msgs/String')
 event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+odom_topic = roslibpy.Topic(client, '/odom', 'nav_msgs/Odometry')
 
 @util.setInterval(1.0)
 def polling_ros():
@@ -81,6 +85,7 @@ def polling_ros():
             logger.info("subscribe to diagnostic_agg")
             diagnostics_topic.subscribe(diagnostic_agg_callback)
             event_topic.subscribe(event_callback)
+            odom_topic.subscribe(odom_callback)
 
             ROS_CLIENT_CONNECTED[0] = True
         except Exception as e:
@@ -127,6 +132,16 @@ def diagnostic_agg_callback(msg):
 def event_callback(msg):
     if ble_manager:
         ble_manager.handleEventCallback(msg)
+
+last_odom_callback_time = time.time()
+def odom_callback(msg):
+    global last_odom_callback_time
+    now = time.time()
+    if now - last_odom_callback_time < 1.0 / ODOM_FREQUENCY:
+        return
+    if ble_manager:
+        ble_manager.handleOdomCallback(msg)
+        last_odom_callback_time = now
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -291,6 +306,23 @@ class SpeakChar(BLENotifyChar):
         return True
 
 
+class OdomChar(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+
+    def handleOdomCallback(self, odom):
+        x = odom['pose']['pose']['position']['x']
+        y = odom['pose']['pose']['position']['y']
+        yaw = odom['pose']['pose']['orientation']['z']
+
+        if not self.owner.ready:
+            return None
+        data = struct.pack('<fff', x, y, yaw)
+
+        self.owner.send_data(self.uuid, data, priority=0)
+        return True
+
+
 class EventChars(BLENotifyChar):
     def __init__(self, owner, navi_uuid, content_uuid, sound_uuid):
         super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
@@ -353,6 +385,7 @@ class CaBotBLE:
                                      content_uuid = CABOT_BLE_UUID(0x50),
                                      sound_uuid = CABOT_BLE_UUID(0x60))
         self.sign_reco_char = SignRecoChar(self, CABOT_BLE_UUID(0x70))
+        self.odom_char = OdomChar(self, CABOT_BLE_UUID(0x71))
 
         self.chars.append(HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
 
@@ -523,6 +556,11 @@ class BLEDeviceManager(gatt.DeviceManager, object):
         for ble in self.bles.values():
             if ble.event_char:
                 ble.event_char.handleEventCallback(msg)
+
+    def handleOdomCallback(self, msg):
+        for ble in self.bles.values():
+            if ble.odom_char:
+                ble.odom_char.handleOdomCallback(msg)
 
     def on_terminate(self, bledev):
         logger.info("terminate %s", bledev.address)
