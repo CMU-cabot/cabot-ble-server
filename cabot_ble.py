@@ -179,12 +179,12 @@ class DestinationChar(BLESubChar):
         if value == "__cancel__":
             logger.info("cancel navigation")
             event = NavigationEvent(subtype="cancel", param=None)
-            self.owner.event_topic.publish(roslibpy.Message({'data': str(event)}))
+            event_topic.publish(roslibpy.Message({'data': str(event)}))
             return
 
         logger.info("destination: %s", value)
         event = NavigationEvent(subtype="destination", param=value)
-        self.owner.event_topic.publish(roslibpy.Message({'data': str(event)}))
+        event_topic.publish(roslibpy.Message({'data': str(event)}))
 
 
 class SummonsChar(BLESubChar):
@@ -195,7 +195,7 @@ class SummonsChar(BLESubChar):
         value = value.decode("utf-8")
         logger.info("summons_callback %s", value)
         event = NavigationEvent(subtype="summons", param=value)
-        self.owner.event_topic.publish(roslibpy.Message({'data': str(event)}))
+        event_topic.publish(roslibpy.Message({'data': str(event)}))
 
 
 class HeartbeatChar(BLESubChar):
