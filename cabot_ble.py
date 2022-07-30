@@ -204,7 +204,7 @@ class HeartbeatChar(BLESubChar):
 
     def callback(self, handle, value):
         value = value.decode("utf-8")
-        # logger.info("heartbeat(%s):%s", self.owner.address, value)
+        logger.info("heartbeat(%s):%s", self.owner.address, value)
         self.owner.last_heartbeat = time.time()
 
 
@@ -391,15 +391,18 @@ class CaBotBLE:
             logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
                         total, (time.time()-start), total*8/(time.time()-start)/1024)
         except:
-            logger.info(traceback.format_exc())
+            #logger.info(traceback.format_exc())
+            logger.error("check_queue got an error")
 
     def start(self):
+        logger.info("CaBotBLE thread started")
         self.alive = True
         start_time = time.time()
         try:
             # if the device is disconnected and it already past 10 minutes then start over from scanning BLE MAC address
             # because iOS change MAC address pediodically
             while time.time() - start_time < 60*10 and self.alive:
+                logger.info("adapter is starting")
                 self.adapter.start(reset_on_start=False)
                 self.target = None
 
@@ -434,7 +437,7 @@ class CaBotBLE:
                 timeout = 3.0
                 while time.time() - self.last_heartbeat < timeout and self.alive:
                     if time.time() - self.last_heartbeat > timeout/2.0:
-                        logger.info("No heartbeat, reconnecting in %.1f seconds %s", timeout - (time.time() - self.last_heartbeat), self.address)
+                        logger.warning("No heartbeat, reconnecting in %.1f seconds %s", timeout - (time.time() - self.last_heartbeat), self.address)
                     time.sleep(0.5)
                 self.ready = False
 
@@ -445,6 +448,7 @@ class CaBotBLE:
         finally:
             self.stop()
             self.ble_manager.on_terminate(self)
+        logger.info("CaBotBLE thread ended")
 
     def req_stop(self):
         self.alive = False
@@ -471,44 +475,54 @@ class BLEDeviceManager(gatt.DeviceManager, object):
         self.cabot_name = "CaBot" + ("-" + cabot_name if cabot_name is not None else "")
         self.cabot_manager=cabot_manager
         logger.info("cabot_name: %s", self.cabot_name)
+        self.bles_lock = threading.Lock()
         self.bles = {}
         self.speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
         self.speak_service.advertise(self.handleSpeak)
 
     def handleSpeak(self, req, res):
         logger.info("/speak request (%s)", str(req))
-        for ble in self.bles.values():
-            if ble.speak_char:
-                ble.speak_char.handleSpeak(req=req)
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.speak_char:
+                    ble.speak_char.handleSpeak(req=req)
         res['result'] = True
         return True
 
     def handleEventCallback(self, msg):
-        for ble in self.bles.values():
-            if ble.event_char:
-                ble.event_char.handleEventCallback(msg)
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.event_char:
+                    ble.event_char.handleEventCallback(msg)
 
     def on_terminate(self, bledev):
-        logger.info("terminate %s", bledev.address)
-        self.bles.pop(bledev.address)
+        with self.bles_lock:
+            logger.info("terminate %s", bledev.address)
+            self.bles.pop(bledev.address)
 
     def make_device(self, mac_address):
         return gatt.Device(mac_address=mac_address, manager=self)
 
     def device_discovered(self, device):
+        if len(self.bles) == 0:
+            logger.info("device {} {} discovered. bles.size={}".format(device.alias(), device.mac_address, len(self.bles)))
         if device.alias() == self.cabot_name:
-            if not device.mac_address in self.bles.keys():
-                ble = CaBotBLE(address=device.mac_address, ble_manager=self, cabot_manager=self.cabot_manager)
-                self.bles[device.mac_address] = ble
-                ble.thread = threading.Thread(target=ble.start)
-                ble.thread.start()
+            with self.bles_lock:
+                if not device.mac_address in self.bles.keys():
+                    logger.info("device {} {} discovered".format(device.alias(), device.mac_address))
+                    ble = CaBotBLE(address=device.mac_address, ble_manager=self, cabot_manager=self.cabot_manager)
+                    self.bles[device.mac_address] = ble
+                    ble.thread = threading.Thread(target=ble.start)
+                    ble.thread.start()
+                else:
+                    #logger.info("device {} {} is already registered".format(device.alias(), device.mac_address))
+                    pass
 
     def stop(self):
         bles = list(self.bles.values())
         for ble in bles:
             ble.req_stop()
             ble.thread.join()
-            
 
 class DeviceStatus:
     def __init__(self):
@@ -743,8 +757,8 @@ def main():
         ble_manager.is_adapter_powered = True
         time.sleep(1)
 
-    ble_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
-    #ble_manager.start_discovery()
+    #ble_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"]) ## sometimes this cannot discover CaBot-app advertisement
+    ble_manager.start_discovery()
 
     try:
         ble_manager.run()
