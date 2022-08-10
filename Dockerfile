@@ -53,9 +53,11 @@ RUN apt update && \
 ## install for caboe_ble
 RUN apt update && \
     apt install -q -y --no-install-recommends \
+        build-essential \
 	bluetooth \
 	bluez \
 	bluez-tools \
+	libglib2.0-dev \
 	python3 \
 	python3-dbus \
 	python3-gi \
@@ -74,20 +76,20 @@ COPY requirements.txt requirements.txt
 RUN pip3 install  --no-cache-dir \
 	-r requirements.txt
 
-ARG USERNAME=developer
-ARG UID=1000
-RUN useradd -m $USERNAME && \
-        echo "$USERNAME:$USERNAME" | chpasswd && \
-        usermod --shell /bin/bash $USERNAME && \
-	usermod -aG sudo $USERNAME && \
-        mkdir -p /etc/sudoers.d/ && \
-        echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USERNAME && \
-        chmod 0440 /etc/sudoers.d/$USERNAME && \
-        usermod  --uid $UID $USERNAME && \
-	groupmod --gid $UID $USERNAME
+#ARG USERNAME=developer
+#ARG UID=1000
+#RUN useradd -m $USERNAME && \
+#        echo "$USERNAME:$USERNAME" | chpasswd && \
+#        usermod --shell /bin/bash $USERNAME && \#
+#	usermod -aG sudo $USERNAME && \
+#        mkdir -p /etc/sudoers.d/ && \
+#        echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USERNAME && \
+#        chmod 0440 /etc/sudoers.d/$USERNAME && \
+#        usermod  --uid $UID $USERNAME && \
+#	groupmod --gid $UID $USERNAME
 
-USER $USERNAME
-ENV HOME /home/$USERNAME
+#USER $USERNAME
+ENV HOME /root
 WORKDIR $HOME
 COPY cabot $HOME/cabot
 COPY cabot_ui $HOME/cabot_ui
