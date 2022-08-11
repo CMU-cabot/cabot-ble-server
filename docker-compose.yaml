@@ -24,6 +24,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 # for ssh in check_device_status.sh
       - ~/.ssh:/home/developer/.ssh
+      - ./cabot_ble.py:/root/cabot_ble.py
     environment:
       - CABOT_NAME
       - CABOT_BLE_ADAPTOR
@@ -52,3 +53,9 @@ services:
 # device, bluetooth
     network_mode: host
     command: ./cabot_ble.py
+
+  simple:
+    extends: ble
+    volumes:
+      - ./simple.py:/root/simple.py
+    command: ./simple.py

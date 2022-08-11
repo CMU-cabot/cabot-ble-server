@@ -2,4 +2,4 @@ pygatt
 gatt
 roslibpy
 pexpect
-
+bluepy
