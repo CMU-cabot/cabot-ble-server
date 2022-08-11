@@ -212,7 +212,7 @@ class HeartbeatChar(BLESubChar):
 
     def callback(self, handle, value):
         value = value.decode("utf-8")
-        # logger.info("heartbeat(%s):%s", self.owner.address, value)
+        logger.info("heartbeat(%s):%s", self.owner.address, value)
         self.owner.last_heartbeat = time.time()
 
 
@@ -404,13 +404,31 @@ class CaBotBLE:
     @util.setInterval(0.01)
     def check_queue(self):
         if self.queue.empty():
+            if self.target and self.ready:
+                try:
+                    self.target.waitForNotifications(0.01)
+                except bluepy.btle.BTLEGattError as e:
+                    logger.error(e)
+                except bluepy.btle.BTLEDisconnectError as e:
+                    logger.error("device is disconneced")
+                    self.alive = False
+                except:
+                    logger.error(traceback.format_exc())
             return
         (priority, uuid_str, data) = self.queue.get()
         try:
             handle = self.get_handle(uuid_str)
+        except bluepy.btle.BTLEGattError as e:
+            logger.info("Could not get handle")
+            logger.error(e)
+            self.alive = False
+            return
+        except bluepy.btle.BTLEDisconnectError as e:
+            logger.error(e)
+            self.alive = False
+            return
         except:
             logger.error(traceback.format_exc())
-            logger.info("Could not get handle")
             return
 
         start = time.time()
@@ -422,6 +440,11 @@ class CaBotBLE:
                 #self.target.char_write_handle(handle, value=packet, wait_for_response=True, timeout=2)
             logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
                         total, (time.time()-start), total*8/(time.time()-start)/1024)
+        except bluepy.btle.BTLEGattError as e:
+            logger.error(e)
+        except bluepy.btle.BTLEDisconnectError as e:
+            logger.error("device is disconneced")
+            self.alive = False
         except:
             logger.info(traceback.format_exc())
 
@@ -471,13 +494,15 @@ class CaBotBLE:
 
                 # wait while heart beat is valid
                 self.last_heartbeat = time.time()
-                timeout = 10.0
+                timeout = 5.0
                 while time.time() - self.last_heartbeat < timeout and self.alive:
                     if time.time() - self.last_heartbeat > timeout/2.0:
                         logger.info("No heartbeat, reconnecting in %.1f seconds %s", timeout - (time.time() - self.last_heartbeat), self.address)
                     time.sleep(0.5)
                 self.ready = False
-
+                self.callback_map = {}
+                self.handle_map = {}
+                self.target.disconnect()
         except:
             logger.error(traceback.format_exc())
         finally:
@@ -573,10 +598,13 @@ class BLEDeviceManager(object):
         
     def handleDiscovery(self, dev, isNewDev, isNewData):
         #print("handleDiscovery {}".format(dev.addr))
+        if len(self.bles) > 0:
+            return
         service = None
         name = None
         for (sdid, desc, value) in dev.getScanData():
             if sdid == bluepy.btle.ScanEntry.COMPLETE_128B_SERVICES:
+                logger.info("device service = {}".format(value))
                 service = value
             if sdid == bluepy.btle.ScanEntry.COMPLETE_LOCAL_NAME:
                 logger.info("device name = {}".format(value))
