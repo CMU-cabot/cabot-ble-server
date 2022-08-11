@@ -358,7 +358,9 @@ class SignRecoChar(BLENotifyChar):
 
     def handleSignReco(self, text):
         if not self.owner.ready:
+            logger.info("handle sign reco not ready")
             return None
+        logger.info("send sign reco request")
         self.send_text(self.uuid, text)
 
 class CaBotBLE:
@@ -546,7 +548,9 @@ class BLEDeviceManager(gatt.DeviceManager, object):
     def handleSignReco(self, req, res):
         logger.info("/sign_reco request")
         for ble in self.bles.values():
+            logger.info("/sign_reco request to {}".format(ble))
             if ble.sign_reco_char:
+                logger.info("call handle sign reco to {}".format(ble))
                 ble.sign_reco_char.handleSignReco(text="normal")
         res['success'] = True
         res['message'] = ""
