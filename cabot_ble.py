@@ -352,6 +352,7 @@ class CaBotBLE:
         self.check_queue_stop = self.check_queue()
 
         self.callback_map = {}
+        self.handle_map = {}
 
     def handleNotification(self, cHandle, data):
         if self.callback_map[cHandle]:
@@ -365,7 +366,10 @@ class CaBotBLE:
         self.callback_map[handle] = callback
 
     def get_handle(self, uuid):
-        return self.target.getCharacteristics(uuid=uuid)[0]
+        uuid_str = str(uuid)
+        if not uuid_str in self.handle_map:
+            self.handle_map[uuid_str] = self.target.getCharacteristics(uuid=UUID(uuid_str))[0]
+        return self.handle_map[uuid_str]
 
     def send_text(self, uuid, text, priority=10):
         data = ("%s"%(text)).encode("utf-8")
@@ -374,12 +378,7 @@ class CaBotBLE:
     def send_data(self, uuid, data, priority=10):
         if not self.ready:
             return
-        try:
-            handle = self.get_handle(uuid)
-        except:
-            logger.info("Could not get handle")
-            return
-        self.queue.put((priority, handle, data))
+        self.queue.put((priority, str(uuid), data))
 
     def make_packets(self, orig_data, size):
         length0 = len(orig_data)
@@ -406,7 +405,14 @@ class CaBotBLE:
     def check_queue(self):
         if self.queue.empty():
             return
-        (priority, handle, data) = self.queue.get()
+        (priority, uuid_str, data) = self.queue.get()
+        try:
+            handle = self.get_handle(uuid_str)
+        except:
+            logger.error(traceback.format_exc())
+            logger.info("Could not get handle")
+            return
+
         start = time.time()
         try:
             total = 0
@@ -566,13 +572,14 @@ class BLEDeviceManager(object):
                 time.sleep(3)
         
     def handleDiscovery(self, dev, isNewDev, isNewData):
-        print("handleDiscovery {}".format(dev.addr))
+        #print("handleDiscovery {}".format(dev.addr))
         service = None
         name = None
         for (sdid, desc, value) in dev.getScanData():
             if sdid == bluepy.btle.ScanEntry.COMPLETE_128B_SERVICES:
                 service = value
             if sdid == bluepy.btle.ScanEntry.COMPLETE_LOCAL_NAME:
+                logger.info("device name = {}".format(value))
                 name = value
         if not service or not name:
             return
