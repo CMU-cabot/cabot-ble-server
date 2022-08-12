@@ -26,7 +26,7 @@ services:
       - ~/.ssh:/home/developer/.ssh
     environment:
       - CABOT_NAME
-      - CABOT_BLE_ADAPTOR
+      - CABOT_BLE_ADAPTER
       - CABOT_START_AT_LAUNCH
       - CABOT_ACE_BATTERY_PORT
       - CABOT_ACE_BATTERY_BAUD
