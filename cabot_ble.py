@@ -316,9 +316,10 @@ class EventChars(BLENotifyChar):
 
 class CaBotBLE:
 
-    def __init__(self, address, addressType, ble_manager, cabot_manager):
+    def __init__(self, address, addressType, iface, ble_manager, cabot_manager):
         self.address = address
         self.addressType = addressType
+        self.iface = iface
         self.ble_manager = ble_manager
         self.cabot_manager = cabot_manager
         self.chars = []
@@ -458,7 +459,7 @@ class CaBotBLE:
                 #self.adapter.start(reset_on_start=False)
                 time.sleep(1)
                 logger.info("connecting to {} {}".format(self.address, self.addressType))
-                self.target = bluepy.btle.Peripheral(self.address, self.addressType)
+                self.target = bluepy.btle.Peripheral(self.address, self.addressType, iface=self.iface)
                 self.target.setDelegate(self)
                 self.target.setMTU(MTU_SIZE)
 
@@ -530,7 +531,8 @@ class CaBotBLE:
 
 class BLEDeviceManager(object):
     def __init__(self, adapter_name, cabot_name=None, cabot_manager=None):
-        self.scanner = bluepy.btle.Scanner().withDelegate(self)
+        self.iface = int(adapter_name[-1])
+        self.scanner = bluepy.btle.Scanner(iface=self.iface).withDelegate(self)
         self.cabot_name = "CaBot" + ("-" + cabot_name if cabot_name is not None else "")
         self.cabot_manager=cabot_manager
         logger.info("cabot_name: %s", self.cabot_name)
@@ -613,7 +615,7 @@ class BLEDeviceManager(object):
             return
         if service == CABOT_SERVICE_UUID and name == self.cabot_name:
             print("discovered {} {}".format(self.cabot_name, dev.addr))
-            ble = CaBotBLE(address=dev.addr, addressType=dev.addrType, ble_manager=self, cabot_manager=self.cabot_manager)
+            ble = CaBotBLE(address=dev.addr, addressType=dev.addrType, iface=self.iface, ble_manager=self, cabot_manager=self.cabot_manager)
             self.bles[dev.addr] = ble
             ble.thread = threading.Thread(target=ble.start)
             ble.thread.start()
@@ -835,6 +837,8 @@ def main():
     cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
     adapter_name = os.environ['CABOT_BLE_ADAPTOR'] if 'CABOT_BLE_ADAPTOR' in os.environ else "hci0"
     start_at_launch = (os.environ['CABOT_START_AT_LAUNCH'] == "1") if 'CABOT_START_AT_LAUNCH' in os.environ else False
+
+    logger.info("adapter: {}".format(adapter_name))
 
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else None
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else None
