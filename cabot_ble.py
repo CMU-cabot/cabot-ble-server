@@ -447,9 +447,11 @@ class CaBotBLE:
             logger.error("device is disconneced")
             self.alive = False
         except:
-            logger.info(traceback.format_exc())
+            #logger.info(traceback.format_exc())
+            logger.error("check_queue got an error")
 
     def start(self):
+        logger.info("CaBotBLE thread started")
         self.alive = True
         start_time = time.time()
         try:
@@ -458,7 +460,7 @@ class CaBotBLE:
             while time.time() - start_time < 60*10 and self.alive:
                 #self.adapter.start(reset_on_start=False)
                 time.sleep(1)
-                logger.info("connecting to {} {}".format(self.address, self.addressType))
+                logger.info("connecting to {} {} via hci{}".format(self.address, self.addressType, self.iface))
                 self.target = bluepy.btle.Peripheral(self.address, self.addressType, iface=self.iface)
                 self.target.setDelegate(self)
                 self.target.setMTU(MTU_SIZE)
@@ -498,7 +500,7 @@ class CaBotBLE:
                 timeout = 5.0
                 while time.time() - self.last_heartbeat < timeout and self.alive:
                     if time.time() - self.last_heartbeat > timeout/2.0:
-                        logger.info("No heartbeat, reconnecting in %.1f seconds %s", timeout - (time.time() - self.last_heartbeat), self.address)
+                        logger.warning("No heartbeat, reconnecting in %.1f seconds %s", timeout - (time.time() - self.last_heartbeat), self.address)
                     time.sleep(0.5)
                 self.ready = False
                 self.callback_map = {}
@@ -509,6 +511,7 @@ class CaBotBLE:
         finally:
             self.stop()
             self.ble_manager.on_terminate(self)
+        logger.info("CaBotBLE thread ended")
 
     def req_stop(self):
         self.alive = False
@@ -536,27 +539,31 @@ class BLEDeviceManager(object):
         self.cabot_name = "CaBot" + ("-" + cabot_name if cabot_name is not None else "")
         self.cabot_manager=cabot_manager
         logger.info("cabot_name: %s", self.cabot_name)
+        self.bles_lock = threading.Lock()
         self.bles = {}
         self.speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
         self.speak_service.advertise(self.handleSpeak)
 
     def handleSpeak(self, req, res):
         logger.info("/speak request (%s)", str(req))
-        for ble in self.bles.values():
-            if ble.speak_char:
-                ble.speak_char.handleSpeak(req=req)
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.speak_char:
+                    ble.speak_char.handleSpeak(req=req)
         res['result'] = True
         return True
 
     def handleEventCallback(self, msg):
-        for ble in self.bles.values():
-            if ble.event_char:
-                ble.event_char.handleEventCallback(msg)
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.event_char:
+                    ble.event_char.handleEventCallback(msg)
 
     def on_terminate(self, bledev=None):
-        if bledev is not None:
-            logger.info("terminate %s", bledev.address)
-            self.bles.pop(bledev.address)
+        with self.bles_lock:
+            if bledev is not None:
+                logger.info("terminate %s", bledev.address)
+                self.bles.pop(bledev.address)
 
 #    def make_device(self, mac_address):
 #        return gatt.Device(mac_address=mac_address, manager=self)
@@ -599,27 +606,28 @@ class BLEDeviceManager(object):
                 time.sleep(3)
         
     def handleDiscovery(self, dev, isNewDev, isNewData):
-        #print("handleDiscovery {}".format(dev.addr))
-        if len(self.bles) > 0:
-            return
-        service = None
-        name = None
-        for (sdid, desc, value) in dev.getScanData():
-            if sdid == bluepy.btle.ScanEntry.COMPLETE_128B_SERVICES:
-                logger.info("device service = {}".format(value))
-                service = value
-            if sdid == bluepy.btle.ScanEntry.COMPLETE_LOCAL_NAME:
-                logger.info("device name = {}".format(value))
-                name = value
-        if not service or not name:
-            return
-        if service == CABOT_SERVICE_UUID and name == self.cabot_name:
-            print("discovered {} {}".format(self.cabot_name, dev.addr))
-            ble = CaBotBLE(address=dev.addr, addressType=dev.addrType, iface=self.iface, ble_manager=self, cabot_manager=self.cabot_manager)
-            self.bles[dev.addr] = ble
-            ble.thread = threading.Thread(target=ble.start)
-            ble.thread.start()
-            self.alive = False
+        with self.bles_lock:
+            #print("handleDiscovery {}".format(dev.addr))
+            if len(self.bles) > 0:
+                return
+            service = None
+            name = None
+            for (sdid, desc, value) in dev.getScanData():
+                if sdid == bluepy.btle.ScanEntry.COMPLETE_128B_SERVICES:
+                    logger.info("device service = {}".format(value))
+                    service = value
+                if sdid == bluepy.btle.ScanEntry.COMPLETE_LOCAL_NAME:
+                    logger.info("device name = {}".format(value))
+                    name = value
+            if not service or not name:
+                return
+            if service == CABOT_SERVICE_UUID and name == self.cabot_name:
+                print("discovered {} {}".format(self.cabot_name, dev.addr))
+                ble = CaBotBLE(address=dev.addr, addressType=dev.addrType, iface=self.iface, ble_manager=self, cabot_manager=self.cabot_manager)
+                self.bles[dev.addr] = ble
+                ble.thread = threading.Thread(target=ble.start)
+                ble.thread.start()
+                self.alive = False
 
     def stop(self):
         self.alive = False
@@ -835,7 +843,7 @@ class CaBotManager(BatteryDriverDelegate):
 def main():
     global ble_manager
     cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
-    adapter_name = os.environ['CABOT_BLE_ADAPTOR'] if 'CABOT_BLE_ADAPTOR' in os.environ else "hci0"
+    adapter_name = os.environ['CABOT_BLE_ADAPTER'] if 'CABOT_BLE_ADAPTER' in os.environ else "hci0"
     start_at_launch = (os.environ['CABOT_START_AT_LAUNCH'] == "1") if 'CABOT_START_AT_LAUNCH' in os.environ else False
 
     logger.info("adapter: {}".format(adapter_name))
