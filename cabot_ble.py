@@ -342,6 +342,7 @@ class CaBotBLE:
 
         self.queue = queue.PriorityQueue()
         self.check_queue_stop = self.check_queue()
+        self.error_count = 0
 
     def send_text(self, uuid, text, priority=10):
         data = ("%s"%(text)).encode("utf-8")
@@ -375,14 +376,17 @@ class CaBotBLE:
 
     @util.setInterval(0.01)
     def check_queue(self):
+        if not self.ready:
+            return
         if self.queue.empty():
             return
+        logger.info("queue size = {}".format(self.queue.qsize()))
         (priority, uuid, data) = self.queue.get()
         try:
             handle = self.target.get_handle(uuid)
         except:
             logger.error(traceback.format_exc())
-            logger.info("Could not get handle")
+            logger.info("Could not get handle {}", )
             return
 
         start = time.time()
@@ -393,9 +397,15 @@ class CaBotBLE:
                 self.target.char_write_handle(handle, value=packet, wait_for_response=True, timeout=2)
             logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
                         total, (time.time()-start), total*8/(time.time()-start)/1024)
+            self.error_count = 0
         except:
-            logger.info(traceback.format_exc())
-            logger.error("check_queue got an error")
+            self.error_count += 1
+            if self.error_count > 3:
+                self.alive = False
+            else:
+                self.queue.put((priority, uuid, data))
+            #logger.info(traceback.format_exc())
+            logger.error("check_queue got an error {}".format(self.error_count))
 
     def start(self):
         logger.info("CaBotBLE thread started")
@@ -411,6 +421,12 @@ class CaBotBLE:
                 except:
                     logger.error(traceback.format_exc())
                     break
+
+                if not self.target.connected:
+                    logger.info("not connected")
+                    self.alive = False
+                    break
+                logger.info("connected")
 
                 error=False
                 for char in self.chars:
@@ -434,6 +450,7 @@ class CaBotBLE:
                         logger.warning("No heartbeat, reconnecting in %.1f seconds %s", timeout - (time.time() - self.last_heartbeat), self.address)
                     time.sleep(0.5)
                 self.ready = False
+                self.alive = False
 
             logger.error("exit while loop")
         except:
@@ -500,17 +517,17 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
 
     def device_discovered(self, device):
         if len(self.bles) == 0:
-            logger.info("device {} {} discovered. bles.size={}".format(device.alias(), device.path, len(self.bles)))
-        if device.alias() == self.cabot_name:
+            logger.info("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
+        if device.name == self.cabot_name:
             if not device.path in self.bles.keys():
-                logger.info("device {} {} discovered".format(device.alias(), device.path))
+                logger.info("device {} {} discovered".format(device.name, device.path))
                 ble = CaBotBLE(device=device, ble_manager=self, cabot_manager=self.cabot_manager)
                 self.bles[device.path] = ble
                 ble.thread = threading.Thread(target=ble.start)
                 ble.thread.start()
                 self.stop_discovery()
             else:
-                #logger.info("device {} {} is already registered".format(device.alias(), device.mac_address))
+                #logger.info("device {} {} is already registered".format(device.alias, device.mac_address))
                 pass
 
     def stop(self):

@@ -17,7 +17,7 @@ BLUEZ_GATT_CHAR_IFACE = 'org.bluez.GattCharacteristic1'
 DBUS_OM_IFACE =      'org.freedesktop.DBus.ObjectManager'
 DBUS_PROP_IFACE =    'org.freedesktop.DBus.Properties'
 
-CHECK_DEVICE_INTERVAL = 0.5
+CHECK_DEVICE_INTERVAL = 1.0
 
 class NoPairingAgent(dbus.service.Object):
     def __init__(self, bus):
@@ -35,9 +35,15 @@ class Device:
         self.path = path
         self.obj = self.bus.get_object("org.bluez", path)
         self.om = self.bus.get_object("org.bluez", "/")
+        self.chars = {}
 
+    @property
     def alias(self):
         return self.obj.Get(BLUEZ_DEVICE_IFACE, "Alias", dbus_interface=DBUS_PROP_IFACE)
+
+    @property
+    def name(self):
+        return self.obj.Get(BLUEZ_DEVICE_IFACE, "Name", dbus_interface=DBUS_PROP_IFACE)
 
     def pair_reply_cb():
         print("pair replied")
@@ -48,6 +54,10 @@ class Device:
     @property
     def address(self):
         return self.obj.Get(BLUEZ_DEVICE_IFACE, "Address", dbus_interface=DBUS_PROP_IFACE)
+
+    @property
+    def connected(self):
+        return self.obj.Get(BLUEZ_DEVICE_IFACE, "Connected", dbus_interface=DBUS_PROP_IFACE)
 
     def connect(self):
         if not self.obj.Get(BLUEZ_DEVICE_IFACE, "Paired", dbus_interface=DBUS_PROP_IFACE):
@@ -70,8 +80,12 @@ class Device:
                 raise RuntimeError("Cannot connect to {}".format(self.path))
 
     def disconnect(self):
-        # do nothing
-        pass
+        print("Disconnecting")
+        try:
+            self.obj.Disconnect(dbus_interface=BLUEZ_DEVICE_IFACE)
+        except:
+            print(traceback.format_exc())
+
 
     def get_characteristic(self, uuid):
         while not self.obj.Get(BLUEZ_DEVICE_IFACE, "ServicesResolved", dbus_interface=DBUS_PROP_IFACE):
@@ -87,7 +101,9 @@ class Device:
             obj = self.bus.get_object("org.bluez", path)
             char_uuid = obj.Get(BLUEZ_GATT_CHAR_IFACE, "UUID", dbus_interface=DBUS_PROP_IFACE)
             if str(char_uuid) == str(uuid):
-                return Characteristic(self.bus, path)
+                if str(uuid) not in self.chars:
+                    self.chars[str(uuid)] = Characteristic(self.bus, path)
+                return self.chars[str(uuid)]
 
     def get_handle(self, uuid):
         return self.get_characteristic(uuid)
@@ -196,10 +212,15 @@ class DeviceManager:
         self.bluez_adapter.SetDiscoveryFilter(args, dbus_interface=BLUEZ_ADAPTER_IFACE)
         self.bluez_adapter.StartDiscovery(dbus_interface=BLUEZ_ADAPTER_IFACE)
         self.__run_discovery_alive = True
+        count = 10
         while self.__run_discovery_alive:
             self.__check_device()
             try: 
                 time.sleep(CHECK_DEVICE_INTERVAL)
+                count -= 1
+                if count < 0:
+                    count = 3
+                    self.discovered.clear()
             except:
                 print("stop __run_discovery")
                 break
@@ -224,8 +245,9 @@ class DeviceManager:
                 with self.mutex:
                     print("check_device mutex begin")
                     if path not in self.discovered:
-                        self.discovered[path] = self.make_device(path)
-                        self._device_discovered(self.discovered[path])
+                        #self.discovered[path] = self.make_device(path)
+                        #self._device_discovered(self.discovered[path])
+                        self._device_discovered(self.make_device(path))
                     print("check_device mutex end")
 
     def stop_discovery(self):
