@@ -33,8 +33,7 @@ import re
 import subprocess
 from uuid import UUID
 
-import pygatt
-import gatt
+import dgatt
 
 import roslibpy
 from roslibpy.comm import RosBridgeClientFactory
@@ -133,6 +132,7 @@ class BLESubChar:
         self.uuid = uuid
         self.indication = indication
         self.valid = False
+        self.target = None
 
     def callback(self, handle, value):
         raise RuntimeError("callback is not implemented")
@@ -141,10 +141,12 @@ class BLESubChar:
         pass
 
     def subscribe_to(self, target):
+        self.target = target
         try:
             target.subscribe(self.uuid, self.callback, indication=self.indication)
             self.valid = True
-        except pygatt.exceptions.BLEError:
+        except:
+            logger.error(traceback.format_exc())
             logger.info("could not connect to char %s", self.uuid)
 
 
@@ -308,8 +310,9 @@ class EventChars(BLENotifyChar):
 
 class CaBotBLE:
 
-    def __init__(self, address, ble_manager, cabot_manager):
-        self.address = address
+    def __init__(self, device, ble_manager, cabot_manager):
+        self.target = device
+        self.address = device.address
         self.ble_manager = ble_manager
         self.cabot_manager = cabot_manager
         self.chars = []
@@ -331,8 +334,6 @@ class CaBotBLE:
 
         self.chars.append(HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
 
-        self.adapter = pygatt.GATTToolBackend(max_read=2048)
-        self.target = None
         self.last_heartbeat = time.time()
 
         # speak
@@ -349,12 +350,7 @@ class CaBotBLE:
     def send_data(self, uuid, data, priority=10):
         if not self.ready:
             return
-        try:
-            handle = self.target.get_handle(uuid)
-        except:
-            logger.info("Could not get handle")
-            return
-        self.queue.put((priority, handle, data))
+        self.queue.put((priority, uuid, data))
 
     def make_packets(self, orig_data, size):
         length0 = len(orig_data)
@@ -381,7 +377,14 @@ class CaBotBLE:
     def check_queue(self):
         if self.queue.empty():
             return
-        (priority, handle, data) = self.queue.get()
+        (priority, uuid, data) = self.queue.get()
+        try:
+            handle = self.target.get_handle(uuid)
+        except:
+            logger.error(traceback.format_exc())
+            logger.info("Could not get handle")
+            return
+
         start = time.time()
         try:
             total = 0
@@ -391,7 +394,7 @@ class CaBotBLE:
             logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
                         total, (time.time()-start), total*8/(time.time()-start)/1024)
         except:
-            #logger.info(traceback.format_exc())
+            logger.info(traceback.format_exc())
             logger.error("check_queue got an error")
 
     def start(self):
@@ -402,32 +405,23 @@ class CaBotBLE:
             # if the device is disconnected and it already past 10 minutes then start over from scanning BLE MAC address
             # because iOS change MAC address pediodically
             while time.time() - start_time < 60*10 and self.alive:
-                logger.info("adapter is starting")
-                self.adapter.start(reset_on_start=False)
-                self.target = None
-
                 try:
-                    logger.info("trying to connect to %s", self.address)
-                    self.target = self.adapter.connect(self.address, timeout=5, address_type=pygatt.BLEAddressType.random)
-                    self.target.exchange_mtu(MTU_SIZE)
-                except pygatt.exceptions.NotConnectedError:
-                    logger.error("device not connected %s", self.address)
-                    break
-                except pygatt.exceptions.NotificationTimeout:
-                    logger.error("setting exchange_mtu failed %s", self.address)
-                    self.target = None
+                    logger.info("trying to connect to %s", self.target)
+                    self.target.connect()
+                except:
+                    logger.error(traceback.format_exc())
                     break
 
-                # discover characteristics once to reduce waiting time if characteristics is not provided by the target
-                target_chars = self.target.discover_characteristics()
                 error=False
                 for char in self.chars:
-                    if target_chars.get(char.uuid):
-                        char.subscribe_to(self.target)
+                    target = self.target.get_characteristic(char.uuid)
+                    if target:
+                        char.subscribe_to(target)
                     else:
                         char.not_found()
                         error=True
                 if error:
+                    logger.error("cannot find characteristic")
                     break
                 self.ready = True
                 self.version_char.notify()
@@ -441,12 +435,16 @@ class CaBotBLE:
                     time.sleep(0.5)
                 self.ready = False
 
-        except pygatt.exceptions.BLEError:
-            logger.info("device disconnected")
+            logger.error("exit while loop")
         except:
             logger.error(traceback.format_exc())
         finally:
+            logger.error("stopping")
+            for char in self.chars:
+                if char.target:
+                    char.target.stop()
             self.stop()
+            logger.error("sending on_terminate")
             self.ble_manager.on_terminate(self)
         logger.info("CaBotBLE thread ended")
 
@@ -463,13 +461,11 @@ class CaBotBLE:
         if self.target is not None:
             try:
                 self.target.disconnect()
-            except pygatt.exceptions.BLEError:
-                #device is already closed #logger.info("device disconnected")
-                pass
-        self.adapter.stop()
+            except:
+                logger.error(traceback.format_exc())
 
 
-class BLEDeviceManager(gatt.DeviceManager, object):
+class BLEDeviceManager(dgatt.DeviceManager, object):
     def __init__(self, adapter_name, cabot_name=None, cabot_manager=None):
         super().__init__(adapter_name = adapter_name)
         self.cabot_name = "CaBot" + ("-" + cabot_name if cabot_name is not None else "")
@@ -482,41 +478,40 @@ class BLEDeviceManager(gatt.DeviceManager, object):
 
     def handleSpeak(self, req, res):
         logger.info("/speak request (%s)", str(req))
-        with self.bles_lock:
-            for ble in self.bles.values():
-                if ble.speak_char:
-                    ble.speak_char.handleSpeak(req=req)
+        for ble in self.bles.values():
+            if ble.speak_char:
+                ble.speak_char.handleSpeak(req=req)
         res['result'] = True
         return True
 
     def handleEventCallback(self, msg):
-        with self.bles_lock:
-            for ble in self.bles.values():
-                if ble.event_char:
-                    ble.event_char.handleEventCallback(msg)
+        for ble in self.bles.values():
+            if ble.event_char:
+                ble.event_char.handleEventCallback(msg)
 
     def on_terminate(self, bledev):
-        with self.bles_lock:
-            logger.info("terminate %s", bledev.address)
-            self.bles.pop(bledev.address)
+        logger.info("terminate %s", bledev.target.path)
+        self.bles.pop(bledev.target.path)
+        if len(self.bles) == 0:
+            self.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
 
-    def make_device(self, mac_address):
-        return gatt.Device(mac_address=mac_address, manager=self)
+    #def make_device(self, mac_address):
+    #    return gatt.Device(mac_address=mac_address, manager=self)
 
     def device_discovered(self, device):
         if len(self.bles) == 0:
-            logger.info("device {} {} discovered. bles.size={}".format(device.alias(), device.mac_address, len(self.bles)))
+            logger.info("device {} {} discovered. bles.size={}".format(device.alias(), device.path, len(self.bles)))
         if device.alias() == self.cabot_name:
-            with self.bles_lock:
-                if not device.mac_address in self.bles.keys():
-                    logger.info("device {} {} discovered".format(device.alias(), device.mac_address))
-                    ble = CaBotBLE(address=device.mac_address, ble_manager=self, cabot_manager=self.cabot_manager)
-                    self.bles[device.mac_address] = ble
-                    ble.thread = threading.Thread(target=ble.start)
-                    ble.thread.start()
-                else:
-                    #logger.info("device {} {} is already registered".format(device.alias(), device.mac_address))
-                    pass
+            if not device.path in self.bles.keys():
+                logger.info("device {} {} discovered".format(device.alias(), device.path))
+                ble = CaBotBLE(device=device, ble_manager=self, cabot_manager=self.cabot_manager)
+                self.bles[device.path] = ble
+                ble.thread = threading.Thread(target=ble.start)
+                ble.thread.start()
+                self.stop_discovery()
+            else:
+                #logger.info("device {} {} is already registered".format(device.alias(), device.mac_address))
+                pass
 
     def stop(self):
         bles = list(self.bles.values())
@@ -757,8 +752,8 @@ def main():
         ble_manager.is_adapter_powered = True
         time.sleep(1)
 
-    #ble_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"]) ## sometimes this cannot discover CaBot-app advertisement
-    ble_manager.start_discovery()
+    ble_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"]) 
+    #ble_manager.start_discovery()
 
     try:
         ble_manager.run()
