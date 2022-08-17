@@ -70,6 +70,7 @@ ROS_CLIENT_CONNECTED = [False]
 
 diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
 event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+ble_hb_topic = roslibpy.Topic(client, '/cabot/ble_heart_beat', 'std_msgs/String')
 
 @util.setInterval(1.0)
 def polling_ros():
@@ -213,6 +214,7 @@ class HeartbeatChar(BLESubChar):
     def callback(self, handle, value):
         value = value.decode("utf-8")
         logger.info("heartbeat(%s):%s", self.owner.address, value)
+        ble_hb_topic.publish(roslibpy.Message({'data': value}))
         self.owner.last_heartbeat = time.time()
 
 
