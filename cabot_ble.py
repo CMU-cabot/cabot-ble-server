@@ -47,6 +47,8 @@ CABOT_BLE_UUID = lambda _id: UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".form
 CABOT_BLE_VERSION = "20220320"
 MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
+#DISCOVERY_UUIDS=[str(CABOT_BLE_VERSION(0))]
+DISCOVERY_UUIDS=[]
 DEBUG=False
 
 ble_manager = None
@@ -512,7 +514,7 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
         logger.info("terminate %s", bledev.target.path)
         self.bles.pop(bledev.target.path)
         if len(self.bles) == 0:
-            self.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"])
+            self.start_discovery(DISCOVERY_UUIDS)
 
     #def make_device(self, mac_address):
     #    return gatt.Device(mac_address=mac_address, manager=self)
@@ -771,8 +773,7 @@ def main():
         ble_manager.is_adapter_powered = True
         time.sleep(1)
 
-    ble_manager.start_discovery(["35CE0000-5E89-4C0D-A3F6-8A6A507C1BF1"]) 
-    #ble_manager.start_discovery()
+    ble_manager.start_discovery(DISCOVERY_UUIDS)
 
     try:
         ble_manager.run()

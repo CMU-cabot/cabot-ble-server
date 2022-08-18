@@ -39,25 +39,37 @@ class Device:
 
     @property
     def alias(self):
-        return self.obj.Get(BLUEZ_DEVICE_IFACE, "Alias", dbus_interface=DBUS_PROP_IFACE)
+        try:
+            return self.obj.Get(BLUEZ_DEVICE_IFACE, "Alias", dbus_interface=DBUS_PROP_IFACE)
+        except:
+            return None
 
     @property
     def name(self):
-        return self.obj.Get(BLUEZ_DEVICE_IFACE, "Name", dbus_interface=DBUS_PROP_IFACE)
+        try:
+            return self.obj.Get(BLUEZ_DEVICE_IFACE, "Name", dbus_interface=DBUS_PROP_IFACE)
+        except:
+            return None
 
-    def pair_reply_cb():
+    def pair_reply_cb(self):
         print("pair replied")
 
-    def pair_error_cb():
+    def pair_error_cb(self, error):
         print("pair error")
 
     @property
     def address(self):
-        return self.obj.Get(BLUEZ_DEVICE_IFACE, "Address", dbus_interface=DBUS_PROP_IFACE)
+        try:
+            return self.obj.Get(BLUEZ_DEVICE_IFACE, "Address", dbus_interface=DBUS_PROP_IFACE)
+        except:
+            return None
 
     @property
     def connected(self):
-        return self.obj.Get(BLUEZ_DEVICE_IFACE, "Connected", dbus_interface=DBUS_PROP_IFACE)
+        try:
+            return self.obj.Get(BLUEZ_DEVICE_IFACE, "Connected", dbus_interface=DBUS_PROP_IFACE)
+        except:
+            return None
 
     def connect(self):
         if not self.obj.Get(BLUEZ_DEVICE_IFACE, "Paired", dbus_interface=DBUS_PROP_IFACE):
@@ -192,6 +204,7 @@ class DeviceManager:
     It will report all devices including one has already been discovered unlike normal StartDiscovery method on dbus
     It will clear discovery status when you call stop_discovery
     """
+    @util.setInterval(0.1, times=1)
     def start_discovery(self, uuids=None):
         print("start_discovery")
         with self.mutex:
@@ -212,7 +225,7 @@ class DeviceManager:
         self.bluez_adapter.SetDiscoveryFilter(args, dbus_interface=BLUEZ_ADAPTER_IFACE)
         self.bluez_adapter.StartDiscovery(dbus_interface=BLUEZ_ADAPTER_IFACE)
         self.__run_discovery_alive = True
-        count = 10
+        count = 3
         while self.__run_discovery_alive:
             self.__check_device()
             try: 
@@ -222,6 +235,7 @@ class DeviceManager:
                     count = 3
                     self.discovered.clear()
             except:
+                print(traceback.format_exc())
                 print("stop __run_discovery")
                 break
 
@@ -242,13 +256,11 @@ class DeviceManager:
                 if not result:
                     continue
                 
-                with self.mutex:
-                    print("check_device mutex begin")
-                    if path not in self.discovered:
-                        #self.discovered[path] = self.make_device(path)
-                        #self._device_discovered(self.discovered[path])
-                        self._device_discovered(self.make_device(path))
-                    print("check_device mutex end")
+                if path not in self.discovered:
+                    with self.mutex:
+                        self.discovered[path] = self.make_device(path)
+                        self._device_discovered(self.discovered[path])
+                        #self._device_discovered(self.make_device(path))
 
     def stop_discovery(self):
         print("stop_discovery")
