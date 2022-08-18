@@ -6,9 +6,16 @@ import dbus.mainloop.glib
 from gi.repository import GLib
 import threading
 import time
+import traceback
 import uuid
+import logging
 
 from cabot import util
+
+DEBUG=True
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 
 BLUEZ_SERVICE_NAME = 'org.bluez'
 BLUEZ_DEVICE_IFACE = 'org.bluez.Device1'
@@ -26,7 +33,7 @@ class NoPairingAgent(dbus.service.Object):
 
     @dbus.service.method('org.bluez.Agent1', in_signature="o", out_signature="")
     def RequestAuthorization(self, device):
-        print("RequestAuthorization (%s)" % (device))
+        logger.info("RequestAuthorization (%s)" % (device))
         return
 
 class Device:
@@ -52,10 +59,10 @@ class Device:
             return None
 
     def pair_reply_cb(self):
-        print("pair replied")
+        logger.info("pair replied")
 
     def pair_error_cb(self, error):
-        print("pair error")
+        logger.info("pair error")
 
     @property
     def address(self):
@@ -73,7 +80,7 @@ class Device:
 
     def connect(self):
         if not self.obj.Get(BLUEZ_DEVICE_IFACE, "Paired", dbus_interface=DBUS_PROP_IFACE):
-            print('Pairing with', self.path)
+            logger.info('Pairing with %s', self.path)
             try:
                 self.obj.Pair(reply_handler=self.pair_reply_cb,
                               error_handler=self.pair_error_cb,
@@ -82,26 +89,30 @@ class Device:
                     if self.obj.Get(BLUEZ_DEVICE_IFACE, "Connected", dbus_interface=DBUS_PROP_IFACE):
                         break
                     ### TBD, timeout
-            except:
-                raise RuntimeError("got error while pairing")
+                return True
+            except Exception as e:
+                logger.error(e)
+                return False
         elif not self.obj.Get(BLUEZ_DEVICE_IFACE, "Connected", dbus_interface=DBUS_PROP_IFACE):
-            print('Connecting to', self.path)
+            logger.info('Connecting to %s', self.path)
             try:
                 self.obj.Connect(dbus_interface=BLUEZ_DEVICE_IFACE)
-            except:
-                raise RuntimeError("Cannot connect to {}".format(self.path))
+                return True
+            except Exception as e:
+                logger.error(e)
+                return False
 
     def disconnect(self):
-        print("Disconnecting")
+        logger.info("Disconnecting")
         try:
             self.obj.Disconnect(dbus_interface=BLUEZ_DEVICE_IFACE)
         except:
-            print(traceback.format_exc())
+            logger.info(traceback.format_exc())
 
 
     def get_characteristic(self, uuid):
         while not self.obj.Get(BLUEZ_DEVICE_IFACE, "ServicesResolved", dbus_interface=DBUS_PROP_IFACE):
-            print('waiting services are resolved')
+            logger.info('waiting services are resolved')
             time.sleep(1)
         
         objects = self.om.GetManagedObjects(dbus_interface=DBUS_OM_IFACE)
@@ -150,7 +161,7 @@ class Characteristic:
 
     def stop(self):
         if self.signal:
-            print("unsubscribe", self.path)
+            logger.info("unsubscribe %s", self.path)
             self.signal.remove()
         self.callbacks = []
 
@@ -198,7 +209,7 @@ class DeviceManager:
 
     def device_discovered(self, device):
         import inspect
-        print("You need to override {}".format(inspect.currentframe().f_code.co_name))
+        logger.info("You need to override {}".format(inspect.currentframe().f_code.co_name))
 
     """
     It will report all devices including one has already been discovered unlike normal StartDiscovery method on dbus
@@ -206,15 +217,15 @@ class DeviceManager:
     """
     @util.setInterval(0.1, times=1)
     def start_discovery(self, uuids=None):
-        print("start_discovery")
+        logger.info("start_discovery")
         with self.mutex:
-            print("start_discovery mutex begin")
+            logger.info("start_discovery mutex begin")
             if self.discovery_thread is None:
                 self.discovery_uuids = [uuid.lower() for uuid in uuids]
                 self.discovery_thread = threading.Thread(target=self.__run_discovery)
-                print("starting thread")
+                logger.info("starting thread")
                 self.discovery_thread.start()
-            print("start_discovery mutex end")
+            logger.info("start_discovery mutex end")
 
     def __run_discovery(self):
         args = {
@@ -235,12 +246,12 @@ class DeviceManager:
                     count = 3
                     self.discovered.clear()
             except:
-                print(traceback.format_exc())
-                print("stop __run_discovery")
+                logger.info(traceback.format_exc())
+                logger.info("stop __run_discovery")
                 break
 
     def __check_device(self):
-        print(self.discovered)
+        #logger.info(self.discovered)
         objects = self.bluez_root.GetManagedObjects(dbus_interface=DBUS_OM_IFACE)
         for path, interfaces in objects.items():
             if BLUEZ_DEVICE_IFACE not in interfaces.keys():
@@ -263,19 +274,22 @@ class DeviceManager:
                         #self._device_discovered(self.make_device(path))
 
     def stop_discovery(self):
-        print("stop_discovery")
+        logger.info("stop_discovery")
         with self.mutex:
-            print("stop_discovery mutex start")
+            logger.info("stop_discovery mutex start")
             self.bluez_adapter.StopDiscovery(dbus_interface=BLUEZ_ADAPTER_IFACE)
             self.__run_discovery_alive = False
             self.discovery_thread.join()
             self.discovery_thread = None
             self.discovered = {}
-            print("stop_discovery mutex end")
+            logger.info("stop_discovery mutex end")
 
     def run(self):
         self.loop = GLib.MainLoop()
         self.loop.run()
+
+    def stop(self):
+        self.loop.quit()
 
 
 if __name__ == "__main__":
@@ -284,7 +298,7 @@ if __name__ == "__main__":
 
     class MyDeviceManager(DeviceManager):
         def device_discovered(self, device):
-            print(device.path)
+            logger.info(device.path)
     
     dm = MyDeviceManager()
 
@@ -296,7 +310,7 @@ if __name__ == "__main__":
     try:
         loop.run()
     except:
-        print("stop loop")
+        logger.info("stop loop")
         loop.quit()
         dm.stop_discovery()
         import sys

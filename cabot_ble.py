@@ -49,6 +49,7 @@ MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
 #DISCOVERY_UUIDS=[str(CABOT_BLE_VERSION(0))]
 DISCOVERY_UUIDS=[]
+WAIT_AFTER_CONNECTION=0.25 # wait a bit after connection to avoid error
 DEBUG=False
 
 ble_manager = None
@@ -282,8 +283,11 @@ class StatusChar(BLENotifyChar):
         super().__init__(owner, uuid)
         self.func = func
         self.interval = interval
-        self.loopStop = self._loop()
         self.count = 0
+        self.loopStop = None
+
+    def start(self):
+        self.loopStop = self._loop()
 
     @util.setInterval(1)
     def _loop(self):
@@ -300,7 +304,8 @@ class StatusChar(BLENotifyChar):
     def stop(self):
         if self.func():
             self.func().stop()
-        self.loopStop.set()
+        if self.loopStop:
+            self.loopStop.set()
 
 
 class SpeakChar(BLENotifyChar):
@@ -446,8 +451,8 @@ class CaBotBLE:
                 self.alive = False
             else:
                 self.queue.put((priority, uuid, data))
-            #logger.info(traceback.format_exc())
-            logger.error("check_queue got an error {}".format(self.error_count))
+                #logger.info(traceback.format_exc())
+                logger.error("check_queue got an error {}".format(self.error_count))
 
     def start(self):
         logger.info("CaBotBLE thread started")
@@ -459,7 +464,9 @@ class CaBotBLE:
             while time.time() - start_time < 60*10 and self.alive:
                 try:
                     logger.info("trying to connect to %s", self.target)
-                    self.target.connect()
+                    if not self.target.connect():
+                        logger.error("Cannot connect to {}".format(self.target))
+                        break
                 except:
                     logger.error(traceback.format_exc())
                     break
@@ -469,6 +476,7 @@ class CaBotBLE:
                     self.alive = False
                     break
                 logger.info("connected")
+                time.sleep(WAIT_AFTER_CONNECTION)
 
                 error=False
                 for char in self.chars:
@@ -478,6 +486,9 @@ class CaBotBLE:
                     else:
                         char.not_found()
                         error=True
+                self.device_status_char.start()
+                self.ros_status_char.start()
+                self.battery_status_char.start()
                 if error:
                     logger.error("cannot find characteristic")
                     break
@@ -558,8 +569,8 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
     #    return gatt.Device(mac_address=mac_address, manager=self)
 
     def device_discovered(self, device):
-        if len(self.bles) == 0:
-            logger.info("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
+        #if len(self.bles) == 0:
+        #    logger.info("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
         if device.name == self.cabot_name:
             if not device.path in self.bles.keys():
                 logger.info("device {} {} discovered".format(device.name, device.path))
@@ -573,6 +584,7 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
                 pass
 
     def stop(self):
+        super().stop()
         bles = list(self.bles.values())
         for ble in bles:
             ble.req_stop()
@@ -825,7 +837,6 @@ def main():
                 driver.stop()
                 battery_thread.join()
             ble_manager.stop()
-            ble_manager._main_loop.quit()
             client.terminate()
         except:
             logger.info(traceback.format_exc())
