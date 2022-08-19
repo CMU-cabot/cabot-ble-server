@@ -71,6 +71,7 @@ ROS_CLIENT_CONNECTED = [False]
 diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
 event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 ble_hb_topic = roslibpy.Topic(client, '/cabot/ble_heart_beat', 'std_msgs/String')
+activity_log_topic = roslibpy.Topic(client, '/cabot/activity_log', 'cabot_msgs/Log')
 
 @util.setInterval(1.0)
 def polling_ros():
@@ -134,6 +135,24 @@ def event_callback(msg):
     if ble_manager:
         ble_manager.handleEventCallback(msg)
 
+def activity_log(category="", text="", memo=""):
+    now = roslibpy.Time.now()
+    logger.info("category={}, text={}, memo={}".format(category, text, memo))
+    try:
+        activity_log_topic.publish(roslibpy.Message({
+            'header': {
+                'stamp': {
+                    'secs': now.secs,
+                    'nsecs': now.nsecs
+                }
+            },
+            'category': category,
+            'text': text,
+            'memo': memo
+        }))
+    except:
+        logger.info(traceback.format_exc())
+
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
         self.owner = owner
@@ -155,6 +174,23 @@ class BLESubChar:
         except:
             logger.error(traceback.format_exc())
             logger.info("could not connect to char %s", self.uuid)
+
+
+class CabotLogChar(BLESubChar):
+    def __init__(self, owner, uuid, manager):
+        super().__init__(owner, uuid)
+        self.manager = manager
+
+    def callback(self, handle, value):
+        value = value.decode("utf-8")
+        try:
+            data = json.loads(value)
+            activity_log(**data)
+        except:
+            activity_log("ble", value, "")
+
+    def not_found(self):
+        logger.error("%s is not implemented", self.uuid)
 
 
 class CabotManageChar(BLESubChar):
@@ -284,6 +320,7 @@ class SpeakChar(BLENotifyChar):
             text = "__force_stop__\n" + text
 
         self.send_text(self.uuid, text, priority=0)
+        activity_log("ble speech request", req['text'], str(req['force']))
         return True
 
 
@@ -332,6 +369,7 @@ class CaBotBLE:
         self.device_status_char = StatusChar(self, CABOT_BLE_UUID(0x02), cabot_manager.device_status, interval=5)
         self.ros_status_char = StatusChar(self, CABOT_BLE_UUID(0x03), cabot_manager.cabot_system_status, interval=5)
         self.battery_status_char = StatusChar(self, CABOT_BLE_UUID(0x04), cabot_manager.cabot_battery_status, interval=5)
+        self.chars.append(CabotLogChar(self, CABOT_BLE_UUID(0x05), self.cabot_manager))
 
         self.chars.append(SummonsChar(self, CABOT_BLE_UUID(0x10)))
         self.chars.append(DestinationChar(self, CABOT_BLE_UUID(0x11)))
