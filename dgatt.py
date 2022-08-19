@@ -190,6 +190,8 @@ class DeviceManager:
         agent_manager.RegisterAgent(agent.path, "NoInputNoOutput")
         agent_manager.RequestDefaultAgent(agent.path)
 
+        self.service_might_be_dead = False
+
     @property
     def is_adapter_powered(self) -> bool:
         return self.bluez_adapter.Get("org.bluez.Adapter1", "Powered",
@@ -228,27 +230,31 @@ class DeviceManager:
             logger.info("start_discovery mutex end")
 
     def __run_discovery(self):
-        args = {
-            "DuplicateData": dbus.types.Boolean(True),
-        }            
-        if self.discovery_uuids:
-            args.update({"UUIDs": self.discovery_uuids})
-        self.bluez_adapter.SetDiscoveryFilter(args, dbus_interface=BLUEZ_ADAPTER_IFACE)
-        self.bluez_adapter.StartDiscovery(dbus_interface=BLUEZ_ADAPTER_IFACE)
-        self.__run_discovery_alive = True
-        count = 3
-        while self.__run_discovery_alive:
-            self.__check_device()
-            try: 
+        try:
+            args = {
+                "DuplicateData": dbus.types.Boolean(True),
+            }
+            if self.discovery_uuids:
+                args.update({"UUIDs": self.discovery_uuids})
+            logger.info("SetDiscoveryFilter")
+            self.bluez_adapter.SetDiscoveryFilter(args, dbus_interface=BLUEZ_ADAPTER_IFACE)
+            logger.info("SetDiscovery")
+            self.bluez_adapter.StartDiscovery(dbus_interface=BLUEZ_ADAPTER_IFACE)
+            self.__run_discovery_alive = True
+            count = 3
+            while self.__run_discovery_alive:
+                logger.info("__check_device")
+                self.__check_device()
                 time.sleep(CHECK_DEVICE_INTERVAL)
                 count -= 1
                 if count < 0:
                     count = 3
                     self.discovered.clear()
-            except:
-                logger.info(traceback.format_exc())
-                logger.info("stop __run_discovery")
-                break
+        except:
+            logger.info(traceback.format_exc())
+            logger.info("stop __run_discovery")
+            self.service_might_be_dead = True
+            self.stop()
 
     def __check_device(self):
         #logger.info(self.discovered)
@@ -266,7 +272,7 @@ class DeviceManager:
                         result = result and (uuid in UUIDs)
                 if not result:
                     continue
-                
+                logger.info(path)
                 if path not in self.discovered:
                     with self.mutex:
                         self.discovered[path] = self.make_device(path)

@@ -30,7 +30,9 @@ import threading
 import traceback
 import logging
 import re
+import signal
 import subprocess
+import sys
 from uuid import UUID
 
 import dgatt
@@ -569,8 +571,8 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
     #    return gatt.Device(mac_address=mac_address, manager=self)
 
     def device_discovered(self, device):
-        #if len(self.bles) == 0:
-        #    logger.info("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
+        if len(self.bles) == 0:
+            logger.info("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
         if device.name == self.cabot_name:
             if not device.path in self.bles.keys():
                 logger.info("device {} {} discovered".format(device.name, device.path))
@@ -794,7 +796,18 @@ class CaBotManager(BatteryDriverDelegate):
     def cabot_battery_status(self):
         return self._battery_status
 
+quit_flag=False
+def sigint_handler(sig, frame):
+    logger.info("sigint_handler")
+    global quit_flag
+    if sig == signal.SIGINT:
+        ble_manager.stop()
+        quit_flag=True
+    else:
+        logger.error("Unexpected signal")
+
 def main():
+    signal.signal(signal.SIGINT, sigint_handler)
     global ble_manager
     cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
     adapter_name = os.environ['CABOT_BLE_ADAPTER'] if 'CABOT_BLE_ADAPTER' in os.environ else "hci0"
@@ -814,19 +827,43 @@ def main():
         battery_thread = threading.Thread(target=driver.start)
         battery_thread.start()
 
-    ble_manager = BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
-
-    result = subprocess.call(["sudo", "rfkill", "unblock", "bluetooth"])
-    # power on the adapter
-    while not ble_manager.is_adapter_powered:
-        logger.info("Bluetooth is off, so powering on")
-        ble_manager.is_adapter_powered = True
-        time.sleep(1)
-
-    ble_manager.start_discovery(DISCOVERY_UUIDS)
+    result = subprocess.call(["grep", "-E", "^ControllerMode *= *le$", "/etc/bluetooth/main.conf"])
+    if result != 0:
+        logger.error("Please check your /etc/bluetooth/main.conf")
+        line = subprocess.check_output(["grep", "-E", "ControllerMode", "/etc/bluetooth/main.conf"])
+        logger.error("Your ControllerMode is '{}'".format(line.decode('utf-8').replace('\n', '')))
+        logger.error("Please use ./setup_bluetooth_conf.sh to configure LE mode")
+        sys.exit(result)
 
     try:
-        ble_manager.run()
+        while not quit_flag:
+            result = subprocess.call(["sudo", "rfkill", "unblock", "bluetooth"])
+            if result != 0:
+                logger.error("Could not unblock rfkill bluetooth")
+                time.sleep(1)
+                continue
+
+            result = subprocess.call(["sudo", "systemctl", "restart", "bluetooth"])
+            if result != 0:
+                logger.error("Could not restart bluetooth service")
+                time.sleep(1)
+                continue
+
+            ble_manager = BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
+            # power on the adapter
+            try:
+                while not ble_manager.is_adapter_powered and not quit_flag:
+                    logger.info("Bluetooth is off, so powering on")
+                    ble_manager.is_adapter_powered = True
+                    time.sleep(1)
+                ble_manager.start_discovery(DISCOVERY_UUIDS)
+                ble_manager.run()
+            except KeyboardInterrupt:
+                logger.info("keyboard interrupt")
+                break
+            except:
+                logger.info(traceback.format_exc())
+                time.sleep(1)
     except KeyboardInterrupt:
         logger.info("keyboard interrupt")
     except Exception as e:
