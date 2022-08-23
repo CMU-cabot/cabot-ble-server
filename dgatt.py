@@ -110,8 +110,12 @@ class Device:
             logger.info(traceback.format_exc())
 
 
-    def get_characteristic(self, uuid):
+    def get_characteristic(self, uuid, timeout=5):
+        count = 0
         while not self.obj.Get(BLUEZ_DEVICE_IFACE, "ServicesResolved", dbus_interface=DBUS_PROP_IFACE):
+            count+=1
+            if timeout < count:
+                raise RuntimeError("Services can not be resolved in time ({})".format(timeout))
             logger.info('waiting services are resolved')
             time.sleep(1)
         
