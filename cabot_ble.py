@@ -131,6 +131,7 @@ def diagnostic_agg_callback(msg):
 
 def event_callback(msg):
     if ble_manager:
+        activity_log("cabot/event", msg['data'])
         ble_manager.handleEventCallback(msg)
 
 def activity_log(category="", text="", memo=""):
