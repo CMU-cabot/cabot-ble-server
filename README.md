@@ -21,7 +21,7 @@ docker-compose build --build-arg UID=$UID
 # Environment Variables (see .env file as example)
 ```
 CABOT_NAME                  # cabot name
-CABOT_BLE_ADAPTOR           # default is 'hci0'
+CABOT_BLE_ADAPTER           # default is 'hci0'
 CABOT_START_AT_LAUNCH       # default is 0, launch cabot system if 1 at start up
 ```
 

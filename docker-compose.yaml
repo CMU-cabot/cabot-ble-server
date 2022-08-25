@@ -12,6 +12,7 @@ services:
       - /run/dbus:/run/dbus
       - /run/udev:/run/udev:ro
       - /var/run/dbus:/var/run/dbus
+      - /etc/bluetooth/:/etc/bluetooth
 # for systemctl
       - /run/systemd/system:/run/systemd/system
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
@@ -27,7 +28,7 @@ services:
       - ./cabot_ble.py:/root/cabot_ble.py
     environment:
       - CABOT_NAME
-      - CABOT_BLE_ADAPTOR
+      - CABOT_BLE_ADAPTER
       - CABOT_START_AT_LAUNCH
       - CABOT_ACE_BATTERY_PORT
       - CABOT_ACE_BATTERY_BAUD

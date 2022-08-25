@@ -8,4 +8,4 @@ WorkingDirectory = /opt/cabot-ble-server
 Type = simple
 
 [Install]
-WantedBy = multi-user.target
+WantedBy = default.target
