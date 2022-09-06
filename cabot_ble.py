@@ -130,9 +130,12 @@ def diagnostic_agg_callback(msg):
                 pass
 
 def event_callback(msg):
+    logger.info("event_callback is called")
     if ble_manager:
         activity_log("cabot/event", msg['data'])
         ble_manager.handleEventCallback(msg)
+    else:
+        logger.error("There is no ble_manager instance")
 
 def activity_log(category="", text="", memo=""):
     now = roslibpy.Time.now()
