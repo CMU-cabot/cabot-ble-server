@@ -551,22 +551,25 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
 
     def handleSpeak(self, req, res):
         logger.info("/speak request (%s)", str(req))
-        for ble in self.bles.values():
-            if ble.speak_char:
-                ble.speak_char.handleSpeak(req=req)
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.speak_char:
+                    ble.speak_char.handleSpeak(req=req)
         res['result'] = True
         return True
 
     def handleEventCallback(self, msg):
-        for ble in self.bles.values():
-            if ble.event_char:
-                ble.event_char.handleEventCallback(msg)
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.event_char:
+                    ble.event_char.handleEventCallback(msg)
 
     def on_terminate(self, bledev):
         logger.info("terminate %s", bledev.target.path)
-        self.bles.pop(bledev.target.path)
-        if len(self.bles) == 0:
-            self.start_discovery(DISCOVERY_UUIDS)
+        with self.bles_lock:
+            self.bles.pop(bledev.target.path)
+            if len(self.bles) == 0:
+                self.start_discovery(DISCOVERY_UUIDS)
 
     #def make_device(self, mac_address):
     #    return gatt.Device(mac_address=mac_address, manager=self)
@@ -574,24 +577,26 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
     def device_discovered(self, device):
         if len(self.bles) == 0:
             logger.info("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
-        if device.name == self.cabot_name:
-            if not device.path in self.bles.keys():
-                logger.info("device {} {} discovered".format(device.name, device.path))
-                ble = CaBotBLE(device=device, ble_manager=self, cabot_manager=self.cabot_manager)
-                self.bles[device.path] = ble
-                ble.thread = threading.Thread(target=ble.start)
-                ble.thread.start()
-                self.stop_discovery()
-            else:
-                #logger.info("device {} {} is already registered".format(device.alias, device.mac_address))
-                pass
+        with self.bles_lock:
+            if device.name == self.cabot_name:
+                if not device.path in self.bles.keys():
+                    logger.info("device {} {} discovered".format(device.name, device.path))
+                    ble = CaBotBLE(device=device, ble_manager=self, cabot_manager=self.cabot_manager)
+                    self.bles[device.path] = ble
+                    ble.thread = threading.Thread(target=ble.start)
+                    ble.thread.start()
+                    self.stop_discovery()
+                else:
+                    #logger.info("device {} {} is already registered".format(device.alias, device.mac_address))
+                    pass
 
     def stop(self):
         super().stop()
-        bles = list(self.bles.values())
-        for ble in bles:
-            ble.req_stop()
-            ble.thread.join()
+        with self.bles_lock:
+            bles = list(self.bles.values())
+            for ble in bles:
+                ble.req_stop()
+                ble.thread.join()
 
 class DeviceStatus:
     def __init__(self):
