@@ -52,4 +52,4 @@ services:
       - /dev/dri
 # device, bluetooth
     network_mode: host
-    command: ./cabot_ble.py
+    command: ./cabot_app.py
