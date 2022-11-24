@@ -112,32 +112,23 @@ class CaBotTCP():
         self.alive = True
         start_time = time.time()
         try:
-            # if the device is disconnected and it already past 10 minutes then start over from scanning BLE MAC address
-            # because iOS change MAC address pediodically
-            while time.time() - start_time < 60*10 and self.alive:
+            self.sio.register_namespace(self.handler)
+            eventlet.wsgi.server(eventlet.listen(('', 5000)), self.app)
 
-                self.sio.register_namespace(self.handler)
-                eventlet.wsgi.server(eventlet.listen(('', 5000)), self.app)
+            error = False
 
-                error=False
+            self.device_status_char.start()
+            self.ros_status_char.start()
+            self.battery_status_char.start()
+            self.ready = True
+            self.version_char.notify()
 
-                self.device_status_char.start()
-                self.ros_status_char.start()
-                self.battery_status_char.start()
-                if error:
-                    common.logger.error("cannot find characteristic")
-                    break
-                self.ready = True
-                self.version_char.notify()
+            # wait while heart beat is valid
+            self.last_heartbeat = time.time()
 
-                # wait while heart beat is valid
-                self.last_heartbeat = time.time()
-
-
-            common.logger.error("exit while loop")
         except:
             common.logger.error(traceback.format_exc())
-        finally:
+        finally:##TODO: need to detect the termination of server and notify other components..
             common.logger.error("stopping")
             for char in self.chars:
                 if char.target:
