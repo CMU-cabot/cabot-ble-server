@@ -38,6 +38,7 @@ from uuid import UUID
 import dgatt
 import common
 import ble
+import tcp
 
 import roslibpy
 from roslibpy.comm import RosBridgeClientFactory
@@ -260,12 +261,17 @@ class CaBotManager(BatteryDriverDelegate):
         return self._battery_status
 
 quit_flag=False
+tcp_server = None
+
 def sigint_handler(sig, frame):
     common.logger.info("sigint_handler")
     global quit_flag
+    global tcp_server
     if sig == signal.SIGINT:
         common.ble_manager.stop()
         quit_flag=True
+        if tcp_server is not None:
+            tcp_server.stop()
     else:
         common.logger.error("Unexpected signal")
 
@@ -297,6 +303,8 @@ def main():
         common.logger.error("Please use ./setup_bluetooth_conf.sh to configure LE mode")
         sys.exit(result)
 
+    global tcp_server
+    tcp_server_thread = None
     try:
         while not quit_flag:
             result = subprocess.call(["sudo", "rfkill", "unblock", "bluetooth"])
@@ -310,6 +318,11 @@ def main():
                 common.logger.error("Could not restart bluetooth service")
                 time.sleep(1)
                 continue
+
+            if tcp_server is None:
+                tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
+                tcp_server_thread = threading.Thread(target=tcp_server.start)
+                tcp_server_thread.start()
 
             common.ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
             # power on the adapter
@@ -335,6 +348,10 @@ def main():
             if driver:
                 driver.stop()
                 battery_thread.join()
+            if tcp_server:
+                tcp_server.stop()
+                if tcp_server_thread:
+                    tcp_server_thread.join()
             common.ble_manager.stop()
             common.client.terminate()
         except:

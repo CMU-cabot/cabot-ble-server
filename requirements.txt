@@ -3,5 +3,5 @@ gatt
 roslibpy
 pexpect
 dbus-python
-eventlet
+gevent
 python-socketio
