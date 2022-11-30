@@ -50,40 +50,42 @@ class CaBotTCP():
         self.sio = socketio.Server(async_mode="gevent")
         self.app = socketio.WSGIApp(self.sio)
         self.cabot_manager = cabot_manager
+        self.manage_cabot_char = common.CabotManageChar(self, "manage_cabot", cabot_manager)
+        self.log_char = common.CabotLogChar(self, "log", cabot_manager)
+        self.summons_char = common.SummonsChar(self, "summons")
+        self.destination_char = common.DestinationChar(self, "destination")
+        self.heartbeat_char = common.HeartbeatChar(self, "heartbeat")
         class subchar_handler(socketio.Namespace):
-            def __init__(self, cabot_manager):
-                super().__init__("/cabot")
-                self.manage_cabot_char = common.CabotManageChar(self, "manage_cabot", cabot_manager)
-                self.log_char = common.CabotLogChar(self, "log", cabot_manager)
-                self.summons_char = common.SummonsChar(self, "summons")
-                self.destination_char = common.DestinationChar(self, "destination")
-                self.heartbeat_char = common.HeartbeatChar(self, "heartbeat")
-
             @self.sio.event
-            def manage_cabot(self, sid, data):
+            def manage_cabot(sid, data):
                 self.manage_cabot_char.callback(0, data.encode("utf-8"))
             
             @self.sio.event
-            def log(self, sid, data):
+            def log(sid, data):
                 self.log_char.callback(0, data.encode("utf-8"))
 
             @self.sio.event
-            def summons(self, sid, data):
+            def summons(sid, data):
                 self.summons_char.callback(0, data.encode("utf-8"))
             
             @self.sio.event
-            def destination(self, sid, data):
+            def destination(sid, data):
                 self.destination_char.callback(0, data.encode("utf-8"))
 
             @self.sio.event
-            def heartbeat(self, sid, data):
+            def heartbeat(sid, data):
                 self.heartbeat_char.callback(0, data.encode("utf-8"))
 
             @self.sio.event
-            def connect(sid, environ, auth):
+            def req_version(sid, data):
                 self.version_char.notify()
 
-        self.version_char = common.VersionChar(self, "version")
+            @self.sio.event
+            def connect(sid, environ, auth):
+                common.logger.info("new socket.io connection")
+                #self.version_char.notify()
+
+        self.version_char = common.VersionChar(self, "cabot_version")
 
         self.device_status_char = common.StatusChar(self, "device_status", cabot_manager.device_status, interval=5)
         self.system_status_char = common.StatusChar(self, "system_status", cabot_manager.cabot_system_status, interval=5)
@@ -93,7 +95,7 @@ class CaBotTCP():
         self.event_char = common.EventChars(self, navi_uuid="navigate",
                                      content_uuid = "content",
                                      sound_uuid = "sound")
-        self.handler = subchar_handler(self.cabot_manager)
+        self.handler = subchar_handler("/cabot")
 
         self.last_heartbeat = time.time()
 
@@ -116,7 +118,6 @@ class CaBotTCP():
             self.system_status_char.start()
             self.battery_status_char.start()
             self.ready = True
-            self.version_char.notify()
 
             # wait while heart beat is valid
             self.last_heartbeat = time.time()
