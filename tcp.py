@@ -35,14 +35,22 @@ import subprocess
 import sys
 from uuid import UUID
 from gevent import pywsgi
+from geventwebsocket.handler import WebSocketHandler
 import socketio
 
 import common
+
+import roslibpy
 
 from cabot import util
 from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
+
+class VersionChar_tcp(common.VersionChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, uuid)
+        self.version = self.version + "_t"
 
 class CaBotTCP():
 
@@ -85,7 +93,7 @@ class CaBotTCP():
                 common.logger.info("new socket.io connection")
                 #self.version_char.notify()
 
-        self.version_char = common.VersionChar(self, "cabot_version")
+        self.version_char = VersionChar_tcp(self, "cabot_version")#common.VersionChar(self, "cabot_version")
 
         self.device_status_char = common.StatusChar(self, "device_status", cabot_manager.device_status, interval=5)
         self.system_status_char = common.StatusChar(self, "system_status", cabot_manager.cabot_system_status, interval=5)
@@ -109,6 +117,13 @@ class CaBotTCP():
     def send_text(self, uuid, text, priority=10):
         self.sio.emit(uuid, text)
 
+    def handleSpeak(self, req, res):
+        common.logger.info("/speak request tcp (%s)", str(req))
+        self.speak_char.handleSpeak(req=req)
+        res['result'] = True
+        common.logger.info("/speak request tcp end")
+        return True
+
     def start(self):
         common.logger.info("CaBotTCP thread started")
         self.alive = True
@@ -119,10 +134,13 @@ class CaBotTCP():
             self.battery_status_char.start()
             self.ready = True
 
+            self.speak_service = roslibpy.Service(common.client, '/speak', 'cabot_msgs/Speak')
+            self.speak_service.advertise(self.handleSpeak)
+
             # wait while heart beat is valid
             self.last_heartbeat = time.time()
             self.sio.register_namespace(self.handler)
-            self.wsgisrv = pywsgi.WSGIServer(('', 5000 ), self.app)
+            self.wsgisrv = pywsgi.WSGIServer(('', 5000 ), self.app, handler_class=WebSocketHandler)
             common.logger.info("CaBotTCP listening...")
             self.wsgisrv.serve_forever()
 

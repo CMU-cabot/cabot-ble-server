@@ -321,8 +321,11 @@ def main():
 
             if tcp_server is None:
                 tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
-                tcp_server_thread = threading.Thread(target=tcp_server.start)
-                tcp_server_thread.start()
+                if True:
+                    tcp_server_thread = threading.Thread(target=tcp_server.start)
+                    tcp_server_thread.start()
+                else:
+                    tcp_server.start()
 
             common.ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
             # power on the adapter

@@ -275,10 +275,11 @@ class BLENotifyChar:
 class VersionChar(BLENotifyChar):
     def __init__(self, owner, uuid):
         super().__init__(owner, uuid)
+        self.version = CABOT_BLE_VERSION
 
     def notify(self):
         logger.info("sending version")
-        self.send_text(self.uuid, CABOT_BLE_VERSION)
+        self.send_text(self.uuid, self.version)
 
 
 class StatusChar(BLENotifyChar):

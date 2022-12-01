@@ -4,4 +4,5 @@ roslibpy
 pexpect
 dbus-python
 gevent
+gevent-websocket
 python-socketio
