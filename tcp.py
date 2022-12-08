@@ -20,6 +20,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from gevent import pywsgi
+from geventwebsocket.handler import WebSocketHandler
+import gevent.monkey
+gevent.monkey.patch_all()
+#import eventlet
+#eventlet.monkey_patch()
+
 import gzip
 import math
 import queue
@@ -34,8 +41,6 @@ import signal
 import subprocess
 import sys
 from uuid import UUID
-from gevent import pywsgi
-from geventwebsocket.handler import WebSocketHandler
 import socketio
 
 import common
@@ -66,23 +71,23 @@ class CaBotTCP():
         class subchar_handler(socketio.Namespace):
             @self.sio.event
             def manage_cabot(sid, data):
-                self.manage_cabot_char.callback(0, data.encode("utf-8"))
+                self.manage_cabot_char.callback(0, data[0].encode("utf-8"))
             
             @self.sio.event
             def log(sid, data):
-                self.log_char.callback(0, data.encode("utf-8"))
+                self.log_char.callback(0, data[0].encode("utf-8"))
 
             @self.sio.event
             def summons(sid, data):
-                self.summons_char.callback(0, data.encode("utf-8"))
+                self.summons_char.callback(0, data[0].encode("utf-8"))
             
             @self.sio.event
             def destination(sid, data):
-                self.destination_char.callback(0, data.encode("utf-8"))
+                self.destination_char.callback(0, data[0].encode("utf-8"))
 
             @self.sio.event
             def heartbeat(sid, data):
-                self.heartbeat_char.callback(0, data.encode("utf-8"))
+                self.heartbeat_char.callback(0, data[0].encode("utf-8"))
 
             @self.sio.event
             def req_version(sid, data):
@@ -124,6 +129,9 @@ class CaBotTCP():
         common.logger.info("/speak request tcp end")
         return True
 
+    def handleEventCallback(self, msg):
+        self.event_char.handleEventCallback(msg)
+
     def start(self):
         common.logger.info("CaBotTCP thread started")
         self.alive = True
@@ -143,6 +151,7 @@ class CaBotTCP():
             self.wsgisrv = pywsgi.WSGIServer(('', 5000 ), self.app, handler_class=WebSocketHandler)
             common.logger.info("CaBotTCP listening...")
             self.wsgisrv.serve_forever()
+            #eventlet.wsgi.server(eventlet.listen(('', 5000)), self.app)
 
         except(KeyboardInterrupt, SystemExit):
             common.logger.info("stopping tcp server...")

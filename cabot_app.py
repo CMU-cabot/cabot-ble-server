@@ -19,11 +19,13 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 import gzip
 import math
 import queue
 import os
+use_tcp = (os.environ['CABOT_APP_USE_TCP'] == "1") if 'CABOT_APP_USE_TCP' in os.environ else False
+if use_tcp:
+    import tcp
 import time
 import json
 import threading
@@ -38,7 +40,6 @@ from uuid import UUID
 import dgatt
 import common
 import ble
-import tcp
 
 import roslibpy
 from roslibpy.comm import RosBridgeClientFactory
@@ -261,14 +262,17 @@ class CaBotManager(BatteryDriverDelegate):
         return self._battery_status
 
 quit_flag=False
+ble_manager = None
 tcp_server = None
 
 def sigint_handler(sig, frame):
     common.logger.info("sigint_handler")
     global quit_flag
     global tcp_server
+    global ble_manager
     if sig == signal.SIGINT:
-        common.ble_manager.stop()
+        if ble_manager is not None:
+            ble_manager.stop()
         quit_flag=True
         if tcp_server is not None:
             tcp_server.stop()
@@ -283,7 +287,8 @@ def main():
 
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else None
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else None
-
+    
+    global use_tcp
 
     cabot_manager = CaBotManager()
     cabot_manager.run(start=start_at_launch)
@@ -302,9 +307,26 @@ def main():
         common.logger.error("Your ControllerMode is '{}'".format(line.decode('utf-8').replace('\n', '')))
         common.logger.error("Please use ./setup_bluetooth_conf.sh to configure LE mode")
         sys.exit(result)
+    
+    def start_tcp():
+        global tcp_server
+        if tcp_server is None:
+            tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
+            if False:
+                tcp_server_thread = threading.Thread(target=tcp_server.start)
+                tcp_server_thread.start()
+            else:
+                common.logger.info("starting tcp server in main thread")
+                tcp_server.start()
+            common.event_handler = tcp_server
+        else:
+            common.logger.info("tcp_server is already running")
 
+    global quit_flag
+    global ble_manager
     global tcp_server
     tcp_server_thread = None
+    common.logger.info("starting...")
     try:
         while not quit_flag:
             result = subprocess.call(["sudo", "rfkill", "unblock", "bluetooth"])
@@ -318,30 +340,25 @@ def main():
                 common.logger.error("Could not restart bluetooth service")
                 time.sleep(1)
                 continue
-
-            if tcp_server is None:
-                tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
-                if True:
-                    tcp_server_thread = threading.Thread(target=tcp_server.start)
-                    tcp_server_thread.start()
-                else:
-                    tcp_server.start()
-
-            common.ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
-            # power on the adapter
-            try:
-                while not common.ble_manager.is_adapter_powered and not quit_flag:
-                    common.logger.info("Bluetooth is off, so powering on")
-                    common.ble_manager.is_adapter_powered = True
+            if not use_tcp:
+                ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
+                common.event_handler = ble_manager
+                # power on the adapter
+                try:
+                    while not ble_manager.is_adapter_powered and not quit_flag:
+                        common.logger.info("Bluetooth is off, so powering on")
+                        ble_manager.is_adapter_powered = True
+                        time.sleep(1)
+                    ble_manager.start_discovery(DISCOVERY_UUIDS)
+                    ble_manager.run()
+                except KeyboardInterrupt:
+                    common.logger.info("keyboard interrupt")
+                    break
+                except:
+                    common.logger.info(traceback.format_exc())
                     time.sleep(1)
-                common.ble_manager.start_discovery(DISCOVERY_UUIDS)
-                common.ble_manager.run()
-            except KeyboardInterrupt:
-                common.logger.info("keyboard interrupt")
-                break
-            except:
-                common.logger.info(traceback.format_exc())
-                time.sleep(1)
+            else:
+                start_tcp()
     except KeyboardInterrupt:
         common.logger.info("keyboard interrupt")
     except Exception as e:
@@ -355,7 +372,8 @@ def main():
                 tcp_server.stop()
                 if tcp_server_thread:
                     tcp_server_thread.join()
-            common.ble_manager.stop()
+            if ble_manager:
+                ble_manager.stop()
             common.client.terminate()
         except:
             common.logger.info(traceback.format_exc())

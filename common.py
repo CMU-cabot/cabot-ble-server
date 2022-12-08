@@ -47,7 +47,7 @@ from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, B
 
 CABOT_BLE_VERSION = "20220320"
 
-ble_manager = None
+event_handler = None
 
 # settings for roslibpy reconnection
 RosBridgeClientFactory.set_initial_delay(1)
@@ -119,12 +119,12 @@ def diagnostic_agg_callback(msg):
 
 def event_callback(msg):
     logger.info("event_callback is called")
-    global ble_manager
-    if ble_manager:
+    global event_handler
+    if event_handler:
         activity_log("cabot/event", msg['data'])
-        ble_manager.handleEventCallback(msg)
+        event_handler.handleEventCallback(msg)
     else:
-        logger.error("There is no ble_manager instance")
+        logger.error("There is no event_handler instance")
         
 
 @util.setInterval(1.0)
