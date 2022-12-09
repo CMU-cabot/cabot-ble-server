@@ -117,15 +117,33 @@ def diagnostic_agg_callback(msg):
             except:
                 pass
 
+event_handlers = []
+def add_event_handler(handler):
+    global event_handlers
+    if not handler in event_handlers:
+        event_handlers.append(handler)
+
+def remove_event_handler(handler):
+    global event_handlers
+    event_handlers.remove(handler)
+
+def clear_event_handler():
+    global event_handlers
+    event_handlers.clear()
+
+def set_event_handler(handler):
+    clear_event_handler()
+    add_event_handler(handler)
+    
 def event_callback(msg):
     logger.info("event_callback is called")
-    global ble_manager
-    if ble_manager:
+    global event_handlers
+    if event_handlers.count == 0:
+        logger.error("There is no event_handler instance")
+    for handler in event_handlers:
         activity_log("cabot/event", msg['data'])
-        ble_manager.handleEventCallback(msg)
-    else:
-        logger.error("There is no ble_manager instance")
-        
+        handler.handleEventCallback(msg)
+       
 
 @util.setInterval(1.0)
 def polling_ros():

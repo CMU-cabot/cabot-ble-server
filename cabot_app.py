@@ -262,13 +262,16 @@ class CaBotManager(BatteryDriverDelegate):
 
 quit_flag=False
 tcp_server = None
+ble_manager = None
 
 def sigint_handler(sig, frame):
     common.logger.info("sigint_handler")
     global quit_flag
     global tcp_server
+    global ble_manager
     if sig == signal.SIGINT:
-        common.ble_manager.stop()
+        if ble_manager is not None:
+            ble_manager.stop()
         quit_flag=True
         if tcp_server is not None:
             tcp_server.stop()
@@ -304,6 +307,7 @@ def main():
         sys.exit(result)
 
     global tcp_server
+    global ble_manager
     tcp_server_thread = None
     try:
         while not quit_flag:
@@ -321,21 +325,23 @@ def main():
 
             if tcp_server is None:
                 tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
+                common.add_event_handler(tcp_server)
                 if True:
                     tcp_server_thread = threading.Thread(target=tcp_server.start)
                     tcp_server_thread.start()
                 else:
                     tcp_server.start()
 
-            common.ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
+            ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
+            common.add_event_handler(ble_manager)
             # power on the adapter
             try:
-                while not common.ble_manager.is_adapter_powered and not quit_flag:
+                while not ble_manager.is_adapter_powered and not quit_flag:
                     common.logger.info("Bluetooth is off, so powering on")
-                    common.ble_manager.is_adapter_powered = True
+                    ble_manager.is_adapter_powered = True
                     time.sleep(1)
-                common.ble_manager.start_discovery(DISCOVERY_UUIDS)
-                common.ble_manager.run()
+                ble_manager.start_discovery(DISCOVERY_UUIDS)
+                ble_manager.run()
             except KeyboardInterrupt:
                 common.logger.info("keyboard interrupt")
                 break
@@ -355,7 +361,7 @@ def main():
                 tcp_server.stop()
                 if tcp_server_thread:
                     tcp_server_thread.join()
-            common.ble_manager.stop()
+            ble_manager.stop()
             common.client.terminate()
         except:
             common.logger.info(traceback.format_exc())
