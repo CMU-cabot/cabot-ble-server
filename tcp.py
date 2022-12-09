@@ -66,23 +66,23 @@ class CaBotTCP():
         class subchar_handler(socketio.Namespace):
             @self.sio.event
             def manage_cabot(sid, data):
-                self.manage_cabot_char.callback(0, data.encode("utf-8"))
+                self.manage_cabot_char.callback(0, data[0].encode("utf-8"))
             
             @self.sio.event
             def log(sid, data):
-                self.log_char.callback(0, data.encode("utf-8"))
+                self.log_char.callback(0, data[0].encode("utf-8"))
 
             @self.sio.event
             def summons(sid, data):
-                self.summons_char.callback(0, data.encode("utf-8"))
+                self.summons_char.callback(0, data[0].encode("utf-8"))
             
             @self.sio.event
             def destination(sid, data):
-                self.destination_char.callback(0, data.encode("utf-8"))
+                self.destination_char.callback(0, data[0].encode("utf-8"))
 
             @self.sio.event
             def heartbeat(sid, data):
-                self.heartbeat_char.callback(0, data.encode("utf-8"))
+                self.heartbeat_char.callback(0, data[0].encode("utf-8"))
 
             @self.sio.event
             def req_version(sid, data):
@@ -123,6 +123,9 @@ class CaBotTCP():
         res['result'] = True
         common.logger.info("/speak request tcp end")
         return True
+
+    def handleEventCallback(self, msg):
+        self.event_char.handleEventCallback(msg)
 
     def start(self):
         common.logger.info("CaBotTCP thread started")
