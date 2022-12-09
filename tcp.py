@@ -34,8 +34,7 @@ import signal
 import subprocess
 import sys
 from uuid import UUID
-from gevent import pywsgi
-from geventwebsocket.handler import WebSocketHandler
+from flask import Flask
 import socketio
 
 import common
@@ -55,8 +54,8 @@ class VersionChar_tcp(common.VersionChar):
 class CaBotTCP():
 
     def __init__(self, cabot_manager):
-        self.sio = socketio.Server(async_mode="gevent")
-        self.app = socketio.WSGIApp(self.sio)
+        self.sio = socketio.Server(async_mode="threading")
+        self.app = Flask(__name__)
         self.cabot_manager = cabot_manager
         self.manage_cabot_char = common.CabotManageChar(self, "manage_cabot", cabot_manager)
         self.log_char = common.CabotLogChar(self, "log", cabot_manager)
@@ -104,6 +103,8 @@ class CaBotTCP():
                                      content_uuid = "content",
                                      sound_uuid = "sound")
         self.handler = subchar_handler("/cabot")
+        self.sio.register_namespace(self.handler)
+        self.app.wsgi_app = socketio.WSGIApp(self.sio, wsgi_app=self.app.wsgi_app)
 
         self.last_heartbeat = time.time()
 
@@ -142,10 +143,8 @@ class CaBotTCP():
 
             # wait while heart beat is valid
             self.last_heartbeat = time.time()
-            self.sio.register_namespace(self.handler)
-            self.wsgisrv = pywsgi.WSGIServer(('', 5000 ), self.app, handler_class=WebSocketHandler)
             common.logger.info("CaBotTCP listening...")
-            self.wsgisrv.serve_forever()
+            self.app.run(host='0.0.0.0', port=5000)
 
         except(KeyboardInterrupt, SystemExit):
             common.logger.info("stopping tcp server...")

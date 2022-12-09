@@ -3,6 +3,5 @@ gatt
 roslibpy
 pexpect
 dbus-python
-gevent
-gevent-websocket
+Flask
 python-socketio
