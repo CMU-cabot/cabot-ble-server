@@ -7,6 +7,7 @@ BLE server to monitor/control [CaBot](https://github.com/cmu-cabot/cabot)
 - edit `.env` file
 
 ```
+git submodule update --init --recursive
 docker-compose build --build-arg UID=$UID
 ./install.sh
 ```
