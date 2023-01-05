@@ -308,8 +308,9 @@ def main():
 
     global tcp_server
     global ble_manager
-    global quit_flag
     tcp_server_thread = None
+    ble_server_thread = None
+    use_tcp_thread = False
     try:
         while not quit_flag:
             result = subprocess.call(["sudo", "rfkill", "unblock", "bluetooth"])
@@ -324,14 +325,7 @@ def main():
                 time.sleep(1)
                 continue
 
-            if tcp_server is None:
-                tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
-                common.add_event_handler(tcp_server)
-                if True:
-                    tcp_server_thread = threading.Thread(target=tcp_server.start)
-                    tcp_server_thread.start()
-                else:
-                    tcp_server.start()
+
 
             ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
             common.add_event_handler(ble_manager)
@@ -342,7 +336,20 @@ def main():
                     ble_manager.is_adapter_powered = True
                     time.sleep(1)
                 ble_manager.start_discovery(DISCOVERY_UUIDS)
-                ble_manager.run()
+
+                if use_tcp_thread:
+                    ble_manager.run()
+                else:
+                    ble_server_thread = threading.Thread(target=ble_manager.run)
+                    ble_server_thread.start()
+                if tcp_server is None:
+                    tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
+                    common.add_event_handler(tcp_server)
+                    if use_tcp_thread:
+                        tcp_server_thread = threading.Thread(target=tcp_server.start)
+                        tcp_server_thread.start()
+                    else:
+                        tcp_server.start()
             except KeyboardInterrupt:
                 common.logger.info("keyboard interrupt")
                 break

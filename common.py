@@ -258,6 +258,7 @@ class SummonsChar(BLESubChar):
         value = value.decode("utf-8")
         logger.info("summons_callback %s", value)
         event = NavigationEvent(subtype="summons", param=value)
+        logger.info("sending summons event")
         event_topic.publish(roslibpy.Message({'data': str(event)}))
 
 

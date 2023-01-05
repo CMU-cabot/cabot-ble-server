@@ -35,6 +35,7 @@ import subprocess
 import sys
 from uuid import UUID
 from flask import Flask
+import gunicorn.app.base
 import socketio
 
 import common
@@ -50,6 +51,21 @@ class VersionChar_tcp(common.VersionChar):
     def __init__(self, owner, uuid):
         super().__init__(owner, uuid)
         self.version = self.version + "_t"
+
+class stdapp(gunicorn.app.base.BaseApplication):
+    def __init__(self, app, options = None):
+        self.options = options or {}
+        self.application = app
+        super().__init__()
+
+    def load_config(self):
+        config = {key: value for key, value in self.options.items()
+                  if key in self.cfg.settings and value is not None}
+        for key, value in config.items():
+            self.cfg.set(key.lower(), value)
+
+    def load(self):
+        return self.application
 
 class CaBotTCP():
 
@@ -144,7 +160,15 @@ class CaBotTCP():
             # wait while heart beat is valid
             self.last_heartbeat = time.time()
             common.logger.info("CaBotTCP listening...")
-            self.app.run(host='0.0.0.0', port=5000)
+            #self.app.run(host='0.0.0.0', port=5000)
+            options = {
+                'bind': '%s:%s' % ('0.0.0.0', '5000'),
+                'workers': 1,
+                'worker_class': 'gthread',
+                'threads': 20,
+            }
+            stdapp(self.app, options).run()
+
 
         except(KeyboardInterrupt, SystemExit):
             common.logger.info("stopping tcp server...")
