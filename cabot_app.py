@@ -308,6 +308,7 @@ def main():
 
     global tcp_server
     global ble_manager
+    global quit_flag
     tcp_server_thread = None
     try:
         while not quit_flag:
