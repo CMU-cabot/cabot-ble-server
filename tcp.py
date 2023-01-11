@@ -159,8 +159,8 @@ class CaBotTCP():
         self.device_status_char.stop()
         self.system_status_char.stop()
         self.battery_status_char.stop()
-        if self.wsgisrv is not None:
-            self.wsgisrv.stop()
-            self.wsgisrv.close()
+        #if self.wsgisrv is not None:
+        #    self.wsgisrv.stop()
+        #    self.wsgisrv.close()
 
 
