@@ -46,11 +46,6 @@ from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
 
-class VersionChar_tcp(common.VersionChar):
-    def __init__(self, owner, uuid):
-        super().__init__(owner, uuid)
-        self.version = self.version + "_t"
-
 class CaBotTCP():
 
     def __init__(self, cabot_manager):
@@ -92,16 +87,14 @@ class CaBotTCP():
                 common.logger.info("new socket.io connection")
                 #self.version_char.notify()
 
-        self.version_char = VersionChar_tcp(self, "cabot_version")#common.VersionChar(self, "cabot_version")
+        self.version_char = common.VersionChar(self, "cabot_version")
 
         self.device_status_char = common.StatusChar(self, "device_status", cabot_manager.device_status, interval=5)
         self.system_status_char = common.StatusChar(self, "system_status", cabot_manager.cabot_system_status, interval=5)
         self.battery_status_char = common.StatusChar(self, "battery_status", cabot_manager.cabot_battery_status, interval=5)
 
         self.speak_char = common.SpeakChar(self, "speak")
-        self.event_char = common.EventChars(self, navi_uuid="navigate",
-                                     content_uuid = "content",
-                                     sound_uuid = "sound")
+        self.event_char = common.EventChars(self, "navigate")
         self.handler = subchar_handler("/cabot")
         self.sio.register_namespace(self.handler)
         self.app.wsgi_app = socketio.WSGIApp(self.sio, wsgi_app=self.app.wsgi_app)
@@ -113,7 +106,6 @@ class CaBotTCP():
         self.ready = False
 
         self.error_count = 0
-
 
     def send_text(self, uuid, text, priority=10):
         self.sio.emit(uuid, text)
@@ -137,9 +129,6 @@ class CaBotTCP():
             self.system_status_char.start()
             self.battery_status_char.start()
             self.ready = True
-
-            self.speak_service = roslibpy.Service(common.client, '/speak', 'cabot_msgs/Speak')
-            self.speak_service.advertise(self.handleSpeak)
 
             # wait while heart beat is valid
             self.last_heartbeat = time.time()

@@ -45,7 +45,7 @@ from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
 
-CABOT_BLE_VERSION = "20220320"
+CABOT_BLE_VERSION = "20230222"
 
 ble_manager = None
 
@@ -74,6 +74,7 @@ diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/
 event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 ble_hb_topic = roslibpy.Topic(client, '/cabot/ble_heart_beat', 'std_msgs/String')
 activity_log_topic = roslibpy.Topic(client, '/cabot/activity_log', 'cabot_msgs/Log')
+speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -337,22 +338,17 @@ class SpeakChar(BLENotifyChar):
     def handleSpeak(self, req):
         if not self.owner.ready:
             return None
-        text = req['text']
-        force = req['force']
-        if force:
-            text = "__force_stop__\n" + text
 
-        self.send_text(self.uuid, text, priority=0)
-        activity_log("ble speech request", req['text'], str(req['force']))
+        jsonText = json.dumps(req, separators=(',', ':'))
+        self.send_text(self.uuid, jsonText, priority=0)
+        activity_log("ble speech request", jsonText)
         return True
 
 
 class EventChars(BLENotifyChar):
-    def __init__(self, owner, navi_uuid, content_uuid, sound_uuid):
+    def __init__(self, owner, navi_uuid):
         super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
         self.navi_uuid = navi_uuid
-        self.content_uuid = content_uuid
-        self.sound_uuid = sound_uuid
 
     def handleEventCallback(self, msg):
         event = BaseEvent.parse(msg['data'])
@@ -363,18 +359,15 @@ class EventChars(BLENotifyChar):
         if event.type != NavigationEvent.TYPE:
             return
 
-        if event.subtype == "next":
-            # notify the phone next event
-            self.send_text(self.navi_uuid, "next")
-
-        if event.subtype == "arrived":
-            self.send_text(self.navi_uuid, "arrived")
-
-        if event.subtype == "content":
-            self.send_text(self.content_uuid, event.param)
-
-        if event.subtype == "sound":
-            self.send_text(self.sound_uuid, event.param)
+        if event.subtype not in ["next", "arrived", "content", "sound"]:
+            return
+        req = {
+            'request_id': time.clock_gettime_ns(time.CLOCK_REALTIME),
+            'type': event.subtype,
+            'param': event.param if event.param else ""
+        }
+        jsonText = json.dumps(req, separators=(',', ':'))
+        self.send_text(self.navi_uuid, jsonText)
 
 class DeviceStatus:
     def __init__(self):
