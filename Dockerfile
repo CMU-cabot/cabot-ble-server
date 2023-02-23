@@ -92,10 +92,13 @@ WORKDIR $HOME
 COPY cabot $HOME/cabot
 COPY cabot_ui $HOME/cabot_ui
 COPY cabot_ace $HOME/cabot_ace
-COPY cabot_ble.py $HOME/cabot_ble.py
+COPY cabot_app.py $HOME/cabot_app.py
+COPY common.py $HOME/common.py
+COPY ble.py $HOME/ble.py
+COPY tcp.py $HOME/tcp.py
 COPY dgatt.py $HOME/dgatt.py
 COPY entrypoint.sh /entrypoint.sh
-COPY cabot-device-check/check_device_status.sh $HOME/check_device_status.sh
+COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale
 
 ENTRYPOINT [ "/entrypoint.sh" ]

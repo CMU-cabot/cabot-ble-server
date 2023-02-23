@@ -3,4 +3,5 @@ gatt
 roslibpy
 pexpect
 dbus-python
-
+Flask
+python-socketio
