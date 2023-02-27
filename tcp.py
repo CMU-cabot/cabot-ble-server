@@ -117,8 +117,8 @@ class CaBotTCP():
         common.logger.info("/speak request tcp end")
         return True
 
-    def handleEventCallback(self, msg):
-        self.event_char.handleEventCallback(msg)
+    def handleEventCallback(self, msg, request_id):
+        self.event_char.handleEventCallback(msg, request_id)
 
     def start(self):
         common.logger.info("CaBotTCP thread started")

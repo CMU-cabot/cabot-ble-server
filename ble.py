@@ -248,11 +248,11 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
         res['result'] = True
         return True
 
-    def handleEventCallback(self, msg):
+    def handleEventCallback(self, msg, request_id):
         with self.bles_lock:
             for ble in self.bles.values():
                 if ble.event_char:
-                    ble.event_char.handleEventCallback(msg)
+                    ble.event_char.handleEventCallback(msg, request_id)
 
     def on_terminate(self, bledev):
         common.logger.info("terminate %s", bledev.target.path)

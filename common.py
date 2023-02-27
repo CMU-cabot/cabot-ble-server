@@ -141,10 +141,11 @@ def event_callback(msg):
     global event_handlers
     if event_handlers.count == 0:
         logger.error("There is no event_handler instance")
+
+    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
     for handler in event_handlers:
-        activity_log("cabot/event", msg['data'])
-        handler.handleEventCallback(msg)
-       
+        handler.handleEventCallback(msg, request_id)
+    activity_log("cabot/event", msg['data'])
 
 @util.setInterval(1.0)
 def polling_ros():
@@ -350,7 +351,7 @@ class EventChars(BLENotifyChar):
         super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
         self.navi_uuid = navi_uuid
 
-    def handleEventCallback(self, msg):
+    def handleEventCallback(self, msg, request_id):
         event = BaseEvent.parse(msg['data'])
         if event is None:
             logger.error("cabot event %s cannot be parsed", msg['data'])
@@ -362,7 +363,7 @@ class EventChars(BLENotifyChar):
         if event.subtype not in ["next", "arrived", "content", "sound"]:
             return
         req = {
-            'request_id': time.clock_gettime_ns(time.CLOCK_REALTIME),
+            'request_id': request_id,
             'type': event.subtype,
             'param': event.param if event.param else ""
         }
