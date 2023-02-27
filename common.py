@@ -71,7 +71,8 @@ if DEBUG:
     set_debug_mode()
 
 diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
-event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+cabot_event_topic_sub = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+cabot_event_topic_pub = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 ble_hb_topic = roslibpy.Topic(client, '/cabot/ble_heart_beat', 'std_msgs/String')
 activity_log_topic = roslibpy.Topic(client, '/cabot/activity_log', 'cabot_msgs/Log')
 speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
@@ -132,12 +133,8 @@ def clear_event_handler():
     global event_handlers
     event_handlers.clear()
 
-def set_event_handler(handler):
-    clear_event_handler()
-    add_event_handler(handler)
-    
-def event_callback(msg):
-    logger.info("event_callback is called")
+def cabot_event_callback(msg):
+    logger.info("cabot_event_callback is called")
     global event_handlers
     if event_handlers.count == 0:
         logger.error("There is no event_handler instance")
@@ -147,6 +144,10 @@ def event_callback(msg):
         handler.handleEventCallback(msg, request_id)
     activity_log("cabot/event", msg['data'])
 
+
+cabot_event_topic_sub.subscribe(cabot_event_callback)
+diagnostics_topic.subscribe(diagnostic_agg_callback)
+
 @util.setInterval(1.0)
 def polling_ros():
     global client
@@ -154,15 +155,12 @@ def polling_ros():
         if ROS_CLIENT_CONNECTED[0]:
             logger.info("ROS bridge has been disconnected")
             ROS_CLIENT_CONNECTED[0] = False
+            return
 
         logger.debug("polling")
         try:
             client.run(1.0)
             logger.info("ROS bridge is connected")
-            logger.info("subscribe to diagnostic_agg")
-            diagnostics_topic.subscribe(diagnostic_agg_callback)
-            event_topic.subscribe(event_callback)
-
             ROS_CLIENT_CONNECTED[0] = True
         except Exception as e:
             # except Failed to connect to ROS
@@ -244,12 +242,12 @@ class DestinationChar(BLESubChar):
         if value == "__cancel__":
             logger.info("cancel navigation")
             event = NavigationEvent(subtype="cancel", param=None)
-            event_topic.publish(roslibpy.Message({'data': str(event)}))
+            cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
             return
 
         logger.info("destination: %s", value)
         event = NavigationEvent(subtype="destination", param=value)
-        event_topic.publish(roslibpy.Message({'data': str(event)}))
+        cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
 
 
 class SummonsChar(BLESubChar):
@@ -260,7 +258,7 @@ class SummonsChar(BLESubChar):
         value = value.decode("utf-8")
         logger.info("summons_callback %s", value)
         event = NavigationEvent(subtype="summons", param=value)
-        event_topic.publish(roslibpy.Message({'data': str(event)}))
+        cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
 
 
 class HeartbeatChar(BLESubChar):
