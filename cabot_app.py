@@ -315,7 +315,6 @@ def main():
             ble_manager.handleSpeak(req, res)
         if tcp_server:
             tcp_server.handleSpeak(req, res)
-        res['success'] = True
         return True
 
     common.speak_service.advertise(handleSpeak)
