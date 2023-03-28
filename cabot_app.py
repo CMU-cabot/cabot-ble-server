@@ -287,7 +287,6 @@ def main():
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else None
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else None
 
-
     cabot_manager = CaBotManager()
     cabot_manager.run(start=start_at_launch)
 
@@ -309,6 +308,17 @@ def main():
     global tcp_server
     global ble_manager
     global quit_flag
+
+    def handleSpeak(req, res):
+        req['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        if ble_manager:
+            ble_manager.handleSpeak(req, res)
+        if tcp_server:
+            tcp_server.handleSpeak(req, res)
+        return True
+
+    common.speak_service.advertise(handleSpeak)
+
     tcp_server_thread = None
     try:
         while not quit_flag:

@@ -45,7 +45,7 @@ from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
 
-CABOT_BLE_VERSION = "20220320"
+CABOT_BLE_VERSION = "20230222"
 
 ble_manager = None
 
@@ -71,9 +71,11 @@ if DEBUG:
     set_debug_mode()
 
 diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
-event_topic = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+cabot_event_topic_sub = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+cabot_event_topic_pub = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 ble_hb_topic = roslibpy.Topic(client, '/cabot/ble_heart_beat', 'std_msgs/String')
 activity_log_topic = roslibpy.Topic(client, '/cabot/activity_log', 'cabot_msgs/Log')
+speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -131,19 +133,20 @@ def clear_event_handler():
     global event_handlers
     event_handlers.clear()
 
-def set_event_handler(handler):
-    clear_event_handler()
-    add_event_handler(handler)
-    
-def event_callback(msg):
-    logger.info("event_callback is called")
+def cabot_event_callback(msg):
+    logger.info("cabot_event_callback is called")
     global event_handlers
     if event_handlers.count == 0:
         logger.error("There is no event_handler instance")
+
+    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
     for handler in event_handlers:
-        activity_log("cabot/event", msg['data'])
-        handler.handleEventCallback(msg)
-       
+        handler.handleEventCallback(msg, request_id)
+    activity_log("cabot/event", msg['data'])
+
+
+cabot_event_topic_sub.subscribe(cabot_event_callback)
+diagnostics_topic.subscribe(diagnostic_agg_callback)
 
 @util.setInterval(1.0)
 def polling_ros():
@@ -152,15 +155,12 @@ def polling_ros():
         if ROS_CLIENT_CONNECTED[0]:
             logger.info("ROS bridge has been disconnected")
             ROS_CLIENT_CONNECTED[0] = False
+            return
 
         logger.debug("polling")
         try:
             client.run(1.0)
             logger.info("ROS bridge is connected")
-            logger.info("subscribe to diagnostic_agg")
-            diagnostics_topic.subscribe(diagnostic_agg_callback)
-            event_topic.subscribe(event_callback)
-
             ROS_CLIENT_CONNECTED[0] = True
         except Exception as e:
             # except Failed to connect to ROS
@@ -242,12 +242,12 @@ class DestinationChar(BLESubChar):
         if value == "__cancel__":
             logger.info("cancel navigation")
             event = NavigationEvent(subtype="cancel", param=None)
-            event_topic.publish(roslibpy.Message({'data': str(event)}))
+            cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
             return
 
         logger.info("destination: %s", value)
         event = NavigationEvent(subtype="destination", param=value)
-        event_topic.publish(roslibpy.Message({'data': str(event)}))
+        cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
 
 
 class SummonsChar(BLESubChar):
@@ -258,7 +258,7 @@ class SummonsChar(BLESubChar):
         value = value.decode("utf-8")
         logger.info("summons_callback %s", value)
         event = NavigationEvent(subtype="summons", param=value)
-        event_topic.publish(roslibpy.Message({'data': str(event)}))
+        cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
 
 
 class HeartbeatChar(BLESubChar):
@@ -337,24 +337,19 @@ class SpeakChar(BLENotifyChar):
     def handleSpeak(self, req):
         if not self.owner.ready:
             return None
-        text = req['text']
-        force = req['force']
-        if force:
-            text = "__force_stop__\n" + text
 
-        self.send_text(self.uuid, text, priority=0)
-        activity_log("ble speech request", req['text'], str(req['force']))
+        jsonText = json.dumps(req, separators=(',', ':'))
+        self.send_text(self.uuid, jsonText, priority=0)
+        activity_log("ble speech request", jsonText)
         return True
 
 
 class EventChars(BLENotifyChar):
-    def __init__(self, owner, navi_uuid, content_uuid, sound_uuid):
+    def __init__(self, owner, navi_uuid):
         super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
         self.navi_uuid = navi_uuid
-        self.content_uuid = content_uuid
-        self.sound_uuid = sound_uuid
 
-    def handleEventCallback(self, msg):
+    def handleEventCallback(self, msg, request_id):
         event = BaseEvent.parse(msg['data'])
         if event is None:
             logger.error("cabot event %s cannot be parsed", msg['data'])
@@ -363,18 +358,15 @@ class EventChars(BLENotifyChar):
         if event.type != NavigationEvent.TYPE:
             return
 
-        if event.subtype == "next":
-            # notify the phone next event
-            self.send_text(self.navi_uuid, "next")
-
-        if event.subtype == "arrived":
-            self.send_text(self.navi_uuid, "arrived")
-
-        if event.subtype == "content":
-            self.send_text(self.content_uuid, event.param)
-
-        if event.subtype == "sound":
-            self.send_text(self.sound_uuid, event.param)
+        if event.subtype not in ["next", "arrived", "content", "sound"]:
+            return
+        req = {
+            'request_id': request_id,
+            'type': event.subtype,
+            'param': event.param if event.param else ""
+        }
+        jsonText = json.dumps(req, separators=(',', ':'))
+        self.send_text(self.navi_uuid, jsonText)
 
 class DeviceStatus:
     def __init__(self):

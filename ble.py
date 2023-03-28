@@ -46,10 +46,8 @@ from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
 
 CABOT_BLE_UUID = lambda _id: UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".format(_id))
-CABOT_BLE_VERSION = "20220320"
 MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
-#DISCOVERY_UUIDS=[str(CABOT_BLE_VERSION(0))]
 DISCOVERY_UUIDS=[]
 WAIT_AFTER_CONNECTION=0.25 # wait a bit after connection to avoid error
 
@@ -74,9 +72,7 @@ class CaBotBLE:
         self.chars.append(common.DestinationChar(self, CABOT_BLE_UUID(0x11)))
 
         self.speak_char = common.SpeakChar(self, CABOT_BLE_UUID(0x30))
-        self.event_char = common.EventChars(self, navi_uuid=CABOT_BLE_UUID(0x40),
-                                     content_uuid = CABOT_BLE_UUID(0x50),
-                                     sound_uuid = CABOT_BLE_UUID(0x60))
+        self.event_char = common.EventChars(self, CABOT_BLE_UUID(0x40))
 
         self.chars.append(common.HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
 
@@ -242,11 +238,9 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
         common.logger.info("cabot_name: %s", self.cabot_name)
         self.bles_lock = threading.Lock()
         self.bles = {}
-        self.speak_service = roslibpy.Service(common.client, '/speak', 'cabot_msgs/Speak')
-        self.speak_service.advertise(self.handleSpeak)
 
     def handleSpeak(self, req, res):
-        common.logger.info("/speak request (%s)", str(req))
+        common.logger.info("/speak request ble (%s)", str(req))
         with self.bles_lock:
             for ble in self.bles.values():
                 if ble.speak_char:
@@ -254,11 +248,11 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
         res['result'] = True
         return True
 
-    def handleEventCallback(self, msg):
+    def handleEventCallback(self, msg, request_id):
         with self.bles_lock:
             for ble in self.bles.values():
                 if ble.event_char:
-                    ble.event_char.handleEventCallback(msg)
+                    ble.event_char.handleEventCallback(msg, request_id)
 
     def on_terminate(self, bledev):
         common.logger.info("terminate %s", bledev.target.path)
