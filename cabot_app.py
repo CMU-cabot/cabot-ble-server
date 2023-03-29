@@ -141,7 +141,7 @@ class SystemStatus:
         self.diagnostics = []
 
 class CaBotManager(BatteryDriverDelegate):
-    def __init__(self):
+    def __init__(self, remote_poweroff_commands=None):
         self._device_status = DeviceStatus()
         self._cabot_system_status = SystemStatus()
         self._battery_status = None
@@ -150,6 +150,7 @@ class CaBotManager(BatteryDriverDelegate):
         self.stop_run = None
         self.check_interval = 1
         self.run_count = 0
+        self._remote_poweroff_commands = remote_poweroff_commands
 
     def run(self, start=False):
         self.start_flag=start
@@ -241,6 +242,10 @@ class CaBotManager(BatteryDriverDelegate):
         self._call(["sudo", "systemctl", "reboot"], lock=self.systemctl_lock)
 
     def poweroff(self):
+        if self._remote_poweroff_commands is not None:
+            for command in self._remote_poweroff_commands:
+                self._call(command, lock=self.systemctl_lock)
+
         self._call(["sudo", "systemctl", "poweroff"], lock=self.systemctl_lock)
 
     def start(self):
@@ -288,6 +293,19 @@ def main():
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else None
 
     cabot_manager = CaBotManager()
+    remote_poweroff_commands = None
+    remote_poweroff_config = os.environ['CABOT_REMOTE_POWEROFF_CONFIG'] if 'CABOT_REMOTE_POWEROFF_CONFIG' in os.environ else None
+    if remote_poweroff_config is not None:
+        remote_poweroff_commands = []
+        items = remote_poweroff_config.split()
+        for item in items:
+            if item.find('@')==-1:
+                common.logger.error("Invalid value of CABOT_REMOTE_POWEROFF_CONFIG is found '{}'".format(item))
+                common.logger.error("Please separate user name and host name by the character @")
+                sys.exit()
+            remote_poweroff_commands.append(["ssh", item, "sudo poweroff"])
+
+    cabot_manager = CaBotManager(remote_poweroff_commands=remote_poweroff_commands)
     cabot_manager.run(start=start_at_launch)
 
     driver = None
