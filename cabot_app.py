@@ -141,7 +141,7 @@ class SystemStatus:
         self.diagnostics = []
 
 class CaBotManager(BatteryDriverDelegate):
-    def __init__(self, remote_poweroff_commands=None):
+    def __init__(self, jetson_poweroff_commands=None):
         self._device_status = DeviceStatus()
         self._cabot_system_status = SystemStatus()
         self._battery_status = None
@@ -150,7 +150,7 @@ class CaBotManager(BatteryDriverDelegate):
         self.stop_run = None
         self.check_interval = 1
         self.run_count = 0
-        self._remote_poweroff_commands = remote_poweroff_commands
+        self._jetson_poweroff_commands = jetson_poweroff_commands
 
     def run(self, start=False):
         self.start_flag=start
@@ -242,8 +242,9 @@ class CaBotManager(BatteryDriverDelegate):
         self._call(["sudo", "systemctl", "reboot"], lock=self.systemctl_lock)
 
     def poweroff(self):
-        if self._remote_poweroff_commands is not None:
-            for command in self._remote_poweroff_commands:
+        if self._jetson_poweroff_commands is not None:
+            for command in self._jetson_poweroff_commands:
+                common.logger.info("send shutdown request to jetson: %s", str(command))
                 self._call(command, lock=self.systemctl_lock)
 
         self._call(["sudo", "systemctl", "poweroff"], lock=self.systemctl_lock)
@@ -293,19 +294,38 @@ def main():
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else None
 
     cabot_manager = CaBotManager()
-    remote_poweroff_commands = None
-    remote_poweroff_config = os.environ['CABOT_REMOTE_POWEROFF_CONFIG'] if 'CABOT_REMOTE_POWEROFF_CONFIG' in os.environ else None
-    if remote_poweroff_config is not None:
-        remote_poweroff_commands = []
-        items = remote_poweroff_config.split()
-        for item in items:
-            if item.find('@')==-1:
-                common.logger.error("Invalid value of CABOT_REMOTE_POWEROFF_CONFIG is found '{}'".format(item))
-                common.logger.error("Please separate user name and host name by the character @")
-                sys.exit()
-            remote_poweroff_commands.append(["ssh", item, "sudo poweroff"])
+    jetson_poweroff_commands = None
+    jetson_user = os.environ['CABOT_JETSON_USER'] if 'CABOT_JETSON_USER' in os.environ else "cabot"
+    jetson_config = os.environ['CABOT_JETSON_CONFIG'] if 'CABOT_JETSON_CONFIG' in os.environ else None
+    if jetson_config is not None:
+        id_file = os.environ['CABOT_ID_FILE'] if 'CABOT_ID_FILE' in os.environ else ""
+        id_dir = os.environ['CABOT_ID_DIR'] if 'CABOT_ID_DIR' in os.environ else ""
+        id_file_path = os.path.join(id_dir, id_file)
+        if not os.path.exists(id_file_path):
+            common.logger.error("ssh id file does not exist '{}'".format(id_file_path))
+            sys.exit()
 
-    cabot_manager = CaBotManager(remote_poweroff_commands=remote_poweroff_commands)
+        jetson_poweroff_commands = []
+        items = jetson_config.split()
+        for item in items:
+            split_item = item.split(':')
+            if len(split_item)!=3:
+                common.logger.error("Invalid value of CABOT_JETSON_CONFIG is found '{}'".format(item))
+                sys.exit()
+
+            result = subprocess.call(["ssh", "-i", id_file_path, jetson_user + "@" + split_item[1], "exit"])
+            if result != 0:
+                common.logger.error("Cannot connect Jetson host, please check ssh config. user:{}, host:{}, ssh key file:{}".format(jetson_user, split_item[1], id_file_path))
+                sys.exit()
+
+            result = subprocess.call(["ssh", "-i", id_file_path, jetson_user + "@" + split_item[1], "sudo poweroff -w"])
+            if result != 0:
+                common.logger.error("Cannot call poweroff on Jetson host, please check sudoer config. user:{}, host:{}".format(jetson_user, split_item[1], id_file_path))
+                sys.exit()
+
+            jetson_poweroff_commands.append(["ssh", "-i", id_file_path, jetson_user + "@" + split_item[1], "sudo poweroff"])
+
+    cabot_manager = CaBotManager(jetson_poweroff_commands=jetson_poweroff_commands)
     cabot_manager.run(start=start_at_launch)
 
     driver = None

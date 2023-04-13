@@ -37,8 +37,8 @@ services:
       - CABOT_CAMERA_NAME_1
       - CABOT_CAMERA_NAME_2
       - CABOT_CAMERA_NAME_3
+      - CABOT_JETSON_USER
       - CABOT_JETSON_CONFIG
-      - CABOT_REMOTE_POWEROFF_CONFIG
       - CABOT_USER_NAME
       - CABOT_ID_DIR=/home/developer/.ssh
       - CABOT_ID_FILE

@@ -51,26 +51,16 @@ CABOT_CAMERA_NAME_3
 ```
 - NUC + Jetson (Realsense x 3)
 ```
-CABOT_JETSON_CONFIG="D:192.168.1.51:rs1 D:192.168.1.52:rs2 D:192.168.1.53:rs3"
+# User name to login jetson (default=cabot)
+CABOT_JETSON_USER=cabot
+# specify jetson mate config. expects a config which is provided for cabot
+# jetson hosts will be automaticallly shutdown in the written order
+CABOT_JETSON_CONFIG="D:192.168.1.52:rs3 D:192.168.1.51:rs2 D:192.168.1.50:rs1"
+# ssh id file to log in jetson
+CABOT_ID_FILE=id_ed25519_cabot
 ```
 
-## variable to power off remote hosts by the power off button
-```
-CABOT_REMOTE_POWEROFF_CONFIG
-# specify remote hosts in the order to power off by the power off button
-# write in the format <user name>@<host name>,
-# and separate config for multiple hosts by space
-# ex) "cabot@192.158.1.52 cabot@192.158.1.51 cabot@192.158.1.50"
-```
-
-Please modify your "~/.ssh/config", and make make sure you can connect from docker contaier to remote hosts by ssh without password.
-An example setting is below.
-```
-Host 192.168.1.*
-    IdentityFile ~/.ssh/id_ed25519_cabot
-```
-
-In remote hosts, please use "visudo" command to modify "/etc/sudoer" and add the following line.
+On Jetson hosts, please use "visudo" command to modify "/etc/sudoer" and add the following line to shutdown Jetson automatically.
 ```
 cabot   ALL=NOPASSWD: /sbin/poweroff
 ```
