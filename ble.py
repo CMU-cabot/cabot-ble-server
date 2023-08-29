@@ -74,6 +74,9 @@ class CaBotBLE:
         self.speak_char = common.SpeakChar(self, CABOT_BLE_UUID(0x30))
         self.event_char = common.EventChars(self, CABOT_BLE_UUID(0x40))
 
+        self.report_char = common.ReportChars(self, CABOT_BLE_UUID(0x51))
+        self.chars.append(common.CabotGetLogChar(self, CABOT_BLE_UUID(0x50), self.cabot_manager, self.report_char))
+
         self.chars.append(common.HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
 
         self.last_heartbeat = time.time()

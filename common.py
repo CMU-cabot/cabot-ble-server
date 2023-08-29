@@ -368,6 +368,38 @@ class EventChars(BLENotifyChar):
         jsonText = json.dumps(req, separators=(',', ':'))
         self.send_text(self.navi_uuid, jsonText)
 
+class CabotGetLogChar(BLESubChar):
+    def __init__(self, owner, uuid, manager, report_char):
+        super().__init__(owner, uuid)
+        self.manager = manager
+
+    def callback(self, handle, value):
+        value = value.decode("utf-8")
+        if value == "list":
+            list = self.manager.getLogList()
+            self.report_char.response_list(list)
+        if value == "detail":
+            detail = self.manager.logDetail()
+            self.report_char.response_detail(detail)
+        # if value == "stop":
+        #     self.manager.stop()
+        # if value == "start":
+        #     self.manager.start()
+
+class ReportChars(BLENotifyChar):
+    def __init__(self, owner, navi_uuid):
+        super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
+        self.navi_uuid = navi_uuid
+
+    def response_list(self, data):
+        request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        req = {
+            'request_id': request_id,
+            'file_name': data
+        }
+        jsonText = json.dumps(req, separators=(',', ':'))
+        self.send_text(self.navi_uuid, jsonText)
+
 class DeviceStatus:
     def __init__(self):
         self.level = "Unknown"
@@ -562,6 +594,11 @@ class CaBotManager(BatteryDriverDelegate):
     def stop(self):
         self._call(["systemctl", "--user", "stop", "cabot"], lock=self.systemctl_lock)
         self._cabot_system_status.deactivating()
+
+    def getLogList(self):
+        command = ["/opt/report-submitter/get_log_list.sh"]
+        result = subprocess.run(command, capture_output=True, text=True).stdout
+        return result.split()
 
     def device_status(self):
         return self._device_status
