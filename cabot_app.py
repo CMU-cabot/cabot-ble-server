@@ -257,6 +257,11 @@ class CaBotManager(BatteryDriverDelegate):
         self._call(["systemctl", "--user", "stop", "cabot"], lock=self.systemctl_lock)
         self._cabot_system_status.deactivating()
 
+    def getLogList(self):
+        command = ["/opt/report-submitter/get_log_list.sh"]
+        result = subprocess.run(command, capture_output=True, text=True).stdout
+        return result.split()
+
     def device_status(self):
         return self._device_status
 
