@@ -372,6 +372,7 @@ class CabotGetLogChar(BLESubChar):
     def __init__(self, owner, uuid, manager, report_char):
         super().__init__(owner, uuid)
         self.manager = manager
+        self.report_char = report_char
 
     def callback(self, handle, value):
         value = value.decode("utf-8")
