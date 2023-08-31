@@ -199,9 +199,9 @@ def getReport(name):
     command = ["sudo", "-E", "/opt/report-submitter/get_report.sh", name]
     result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
     items = result.split("\n")
-    if len(items) >= 2:
-        return (items[0], "\n".join(items[1:]))
-    return ("", "")
+    if len(items) >= 4:
+        return (items[0], items[1], items[2], "\n".join(items[3:]))
+    return (0, 0, "", "")
 
 
 def response_log(request_json):
@@ -240,8 +240,14 @@ def response_log(request_json):
     elif request_type == "detail":
         # TODO: get title and detail by log_name
         log_name = request["log_name"]
-        (title, detail) = getReport(log_name)
-        response["log"] = {"name": log_name, "title": title, "detail": detail}
+        (is_report_submitted, is_uploaded_to_box, title, detail) = getReport(log_name)
+        response["log"] = {
+            "name": log_name,
+            "title": title,
+            "detail": detail,
+            "is_report_submitted": is_report_submitted == "1",
+            "is_uploaded_to_box": is_uploaded_to_box == "1"
+        }
     elif request_type == "report":
         title = request["title"]
         detail = request["detail"]
