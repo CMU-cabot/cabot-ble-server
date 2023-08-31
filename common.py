@@ -33,6 +33,7 @@ import re
 import signal
 import subprocess
 import sys
+import asyncio
 from uuid import UUID
 
 import dgatt
@@ -169,6 +170,54 @@ def polling_ros():
         pass
 
 polling_ros()
+
+async def observer(q):
+    while True:
+        while q.empty():
+            logger.info("log request loop")
+            await asyncio.sleep(3)
+
+        requests = []
+        for _ in range(q.qsize()):
+            request = await q.get()
+            requests.append(request)
+
+        logger.info("log loop out")
+        
+        results = await asyncio.gather(
+            *[response_log(request) for request in requests]
+        )
+
+        for _ in range(len(requests)):
+            q.task_done()
+
+async def response_log(request):
+    global event_handlers
+    if event_handlers.count == 0:
+        logger.error("There is no event_handler instance")
+
+    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+    for handler in event_handlers:
+        logger.info("log test")
+        handler.logResponse(request, request_id)
+
+q = None
+async def main_wrapper():
+    global q
+    q = asyncio.Queue()
+    logger.info("log loop start")
+    asyncio.create_task(observer(q))
+
+logger.info("log loop ready")
+asyncio.run(main_wrapper())
+
+def add_to_queue(request):
+    global q
+    q.put_nowait(request)
+
+# async def add_to_queue(request):
+#     global q
+#     await q.put(request)
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -369,19 +418,20 @@ class EventChars(BLENotifyChar):
         self.send_text(self.navi_uuid, jsonText)
 
 class CabotGetLogChar(BLESubChar):
-    def __init__(self, owner, uuid, manager, report_char):
+    def __init__(self, owner, uuid, manager):
         super().__init__(owner, uuid)
         self.manager = manager
-        self.report_char = report_char
 
     def callback(self, handle, value):
         value = value.decode("utf-8")
-        if value == "list":
-            list = self.manager.getLogList()
-            self.report_char.response_list(list)
-        if value == "detail":
-            detail = self.manager.logDetail()
-            self.report_char.response_detail(detail)
+        # if value == "list":
+        #     list = self.manager.getLogList()
+        #     self.report_char.response_list(list)
+        add_to_queue(value)
+            
+        # if value == "detail":
+        #     detail = self.manager.logDetail()
+        #     self.report_char.response_detail(detail)
         # if value == "stop":
         #     self.manager.stop()
         # if value == "start":
@@ -392,11 +442,11 @@ class ReportChars(BLENotifyChar):
         super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
         self.navi_uuid = navi_uuid
 
-    def response_list(self, data):
+    def logResponse(self, response, request_id):
         request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
         req = {
             'request_id': request_id,
-            'file_name': data
+            'file_name': response
         }
         jsonText = json.dumps(req, separators=(',', ':'))
         self.send_text(self.navi_uuid, jsonText)
