@@ -171,49 +171,76 @@ def polling_ros():
 
 polling_ros()
 
-async def observer(q):
-    while True:
-        while q.empty():
-            logger.info("log request loop")
-            await asyncio.sleep(3)
+# q = queue.Queue()
 
-        requests = []
-        for _ in range(q.qsize()):
-            request = await q.get()
-            requests.append(request)
+# def observer():
+#     while True:
+#         while q.empty():
+#             logger.info("log request loop")
+#             time.sleep(3)
 
-        logger.info("log loop out")
+#         request = q.get()
+#         response_log(request)
+
+#         q.task_done()
+
+# def response_log(request):
+#     global event_handlers
+#     if event_handlers.count == 0:
+#         logger.error("There is no event_handler instance")
+
+#     request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+#     for handler in event_handlers:
+#         logger.info("log test")
+#         handler.logResponse(request, request_id)
+
+# thread = threading.Thread(target=observer)
+# thread.setDaemon(True)
+# thread.start()
+
+# async def observer(q):
+#     while True:
+#         while q.empty():
+#             logger.info("log request loop")
+#             await asyncio.sleep(3)
+
+#         requests = []
+#         for _ in range(q.qsize()):
+#             request = await q.get()
+#             requests.append(request)
+
+#         logger.info("log loop out")
         
-        results = await asyncio.gather(
-            *[response_log(request) for request in requests]
-        )
+#         results = await asyncio.gather(
+#             *[response_log(request) for request in requests]
+#         )
 
-        for _ in range(len(requests)):
-            q.task_done()
+#         for _ in range(len(requests)):
+#             q.task_done()
 
-async def response_log(request):
-    global event_handlers
-    if event_handlers.count == 0:
-        logger.error("There is no event_handler instance")
+# async def response_log(request):
+#     global event_handlers
+#     if event_handlers.count == 0:
+#         logger.error("There is no event_handler instance")
 
-    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
-    for handler in event_handlers:
-        logger.info("log test")
-        handler.logResponse(request, request_id)
+#     request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+#     for handler in event_handlers:
+#         logger.info("log test")
+#         handler.logResponse(request, request_id)
 
-q = None
-async def main_wrapper():
-    global q
-    q = asyncio.Queue()
-    logger.info("log loop start")
-    asyncio.create_task(observer(q))
+# q = None
+# async def main_wrapper():
+#     global q
+#     q = asyncio.Queue()
+#     logger.info("log loop start")
+#     asyncio.create_task(observer(q))
 
-logger.info("log loop ready")
-asyncio.run(main_wrapper())
+# logger.info("log loop ready")
+# asyncio.run(main_wrapper())
 
-def add_to_queue(request):
-    global q
-    q.put_nowait(request)
+# def add_to_queue(request):
+#     global q
+#     q.put_nowait(request)
 
 # async def add_to_queue(request):
 #     global q
