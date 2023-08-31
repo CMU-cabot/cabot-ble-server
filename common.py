@@ -190,6 +190,19 @@ def getLogList():
     result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
     return result.split()
 
+def makeReport(title, detail, name):
+    command = ["sudo", "-E", "/opt/report-submitter/create_list.sh", title, detail, name]
+    result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
+    return result.split()
+
+def getReport(name):
+    command = ["sudo", "-E", "/opt/report-submitter/get_report.sh", name]
+    result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
+    items = result.split("\n")
+    if len(items) >= 2:
+        return (items[0], "\n".join(items[1:]))
+    return ("", "")
+
 
 def response_log(request_json):
     global event_handlers
@@ -213,18 +226,27 @@ def response_log(request_json):
         "type": request_type
         }
     if request_type == "list":
-        # TODO: add is_submit_report, is_uploaded_to_box status
+        response["log_list"] = []
         log_names = getLogList()
-        response["log_list"] = [{"name": x} for x in log_names]
+        for log_name in log_names:
+            items = log_name.split(",")
+            is_report_submitted = (items[1] == "1") if len(items) > 1 else False
+            is_uploaded_to_box = (items[2] == "1") if len(items) > 2 else False
+            response["log_list"].append({
+                "name": items[0],
+                "is_report_submitted": is_report_submitted,
+                "is_uploaded_to_box": is_uploaded_to_box
+                })
     elif request_type == "detail":
         # TODO: get title and detail by log_name
         log_name = request["log_name"]
-        title = ""
-        detail = ""
+        (title, detail) = getReport(log_name)
         response["log"] = {"name": log_name, "title": title, "detail": detail}
     elif request_type == "report":
-        # TODO: save report
-        pass
+        title = request["title"]
+        detail = request["detail"]
+        name = request["log_name"]
+        makeReport(title, detail, name)
 
     for handler in event_handlers:
         handler.logResponse(response)
