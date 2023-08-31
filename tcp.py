@@ -120,6 +120,13 @@ class CaBotTCP():
     def handleEventCallback(self, msg, request_id):
         self.event_char.handleEventCallback(msg, request_id)
 
+    def logResponse(self, request, request_id):
+        common.logger.info("cabot log response TCP")
+        # if request == "list":
+        #     response = self.cabot_manager.getLogList()
+        #     common.logger.info("cabot log response")
+        #     self.report_char.logResponse(response, request_id)
+
     def start(self):
         common.logger.info("CaBotTCP thread started")
         self.alive = True

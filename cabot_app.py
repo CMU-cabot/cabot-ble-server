@@ -258,7 +258,7 @@ class CaBotManager(BatteryDriverDelegate):
         self._cabot_system_status.deactivating()
 
     def getLogList(self):
-        command = ["sudo", "-E", "./opt/report-submitter/get_log_list.sh"]
+        command = ["sudo", "-E", "/opt/report-submitter/get_log_list.sh"]
         result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
         return result.split()
 

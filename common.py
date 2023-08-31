@@ -177,7 +177,7 @@ def observer():
     while True:
         while q.empty():
             logger.info("log request loop")
-            time.sleep(8)
+            time.sleep(1)
 
         request = q.get()
         response_log(request)
@@ -191,62 +191,14 @@ def response_log(request):
 
     request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
     for handler in event_handlers:
-        logger.info("log test")
         handler.logResponse(request, request_id)
 
 def add_to_queue(request):
-    logger.info("log test queue put")
     q.put(request)
 
 thread = threading.Thread(target=observer)
 thread.setDaemon(True)
 thread.start()
-
-# async def observer(q):
-#     while True:
-#         while q.empty():
-#             logger.info("log request loop")
-#             await asyncio.sleep(3)
-
-#         requests = []
-#         for _ in range(q.qsize()):
-#             request = await q.get()
-#             requests.append(request)
-
-#         logger.info("log loop out")
-        
-#         results = await asyncio.gather(
-#             *[response_log(request) for request in requests]
-#         )
-
-#         for _ in range(len(requests)):
-#             q.task_done()
-
-# async def response_log(request):
-#     global event_handlers
-#     if event_handlers.count == 0:
-#         logger.error("There is no event_handler instance")
-
-#     request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
-#     for handler in event_handlers:
-#         logger.info("log test")
-#         handler.logResponse(request, request_id)
-
-# q = None
-# async def main_wrapper():
-#     global q
-#     q = asyncio.Queue()
-#     logger.info("log loop start")
-#     asyncio.create_task(observer(q))
-
-# logger.info("log loop ready")
-# asyncio.run(main_wrapper())
-
-
-
-# async def add_to_queue(request):
-#     global q
-#     await q.put(request)
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -453,18 +405,7 @@ class CabotGetLogChar(BLESubChar):
 
     def callback(self, handle, value):
         value = value.decode("utf-8")
-        # if value == "list":
-        #     list = self.manager.getLogList()
-        #     self.report_char.response_list(list)
         add_to_queue(value)
-            
-        # if value == "detail":
-        #     detail = self.manager.logDetail()
-        #     self.report_char.response_detail(detail)
-        # if value == "stop":
-        #     self.manager.stop()
-        # if value == "start":
-        #     self.manager.start()
 
 class ReportChars(BLENotifyChar):
     def __init__(self, owner, navi_uuid):
