@@ -184,17 +184,29 @@ def observer():
 
         q.task_done()
 
+
+def getLogList():
+    command = ["sudo", "-E", "/opt/report-submitter/get_log_list.sh"]
+    result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
+    return result.split()
+
+
 def response_log(request):
     global event_handlers
     if event_handlers.count == 0:
         logger.error("There is no event_handler instance")
 
-    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
-    for handler in event_handlers:
-        handler.logResponse(request, request_id)
+    if request == "list":
+        response_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        log_names = getLogList()
+        for handler in event_handlers:
+            handler.logResponse({"response_id": response_id, "log_names": log_names})
+
 
 def add_to_queue(request):
+    logger.info(f"add to queue {request}")
     q.put(request)
+
 
 thread = threading.Thread(target=observer)
 thread.setDaemon(True)
@@ -398,7 +410,8 @@ class EventChars(BLENotifyChar):
         jsonText = json.dumps(req, separators=(',', ':'))
         self.send_text(self.navi_uuid, jsonText)
 
-class CabotGetLogChar(BLESubChar):
+
+class CaBotLogRequestChar(BLESubChar):
     def __init__(self, owner, uuid, manager):
         super().__init__(owner, uuid)
         self.manager = manager
@@ -407,19 +420,16 @@ class CabotGetLogChar(BLESubChar):
         value = value.decode("utf-8")
         add_to_queue(value)
 
-class ReportChars(BLENotifyChar):
-    def __init__(self, owner, navi_uuid):
-        super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
-        self.navi_uuid = navi_uuid
 
-    def logResponse(self, response, request_id):
-        request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
-        req = {
-            'request_id': request_id,
-            'file_name': response
-        }
-        jsonText = json.dumps(req, separators=(',', ':'))
-        self.send_text(self.navi_uuid, jsonText)
+class CaBotLogResponseChar(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, None)
+        self.uuid = uuid
+
+    def response(self, response):
+        jsonText = json.dumps(response, separators=(',', ':'))
+        self.send_text(self.uuid, jsonText)
+
 
 class DeviceStatus:
     def __init__(self):

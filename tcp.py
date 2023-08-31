@@ -53,7 +53,7 @@ class CaBotTCP():
         self.app = Flask(__name__)
         self.cabot_manager = cabot_manager
         self.manage_cabot_char = common.CabotManageChar(self, "manage_cabot", cabot_manager)
-        self.log_char = common.CabotLogChar(self, "log", cabot_manager)
+        self.log_request_char = common.CaBotLogRequestChar(self, "log_request", cabot_manager)
         self.summons_char = common.SummonsChar(self, "summons")
         self.destination_char = common.DestinationChar(self, "destination")
         self.heartbeat_char = common.HeartbeatChar(self, "heartbeat")
@@ -63,8 +63,8 @@ class CaBotTCP():
                 self.manage_cabot_char.callback(0, data[0].encode("utf-8"))
             
             @self.sio.event
-            def log(sid, data):
-                self.log_char.callback(0, data[0].encode("utf-8"))
+            def log_request(sid, data):
+                self.log_request_char.callback(0, data[0].encode("utf-8"))
 
             @self.sio.event
             def summons(sid, data):
@@ -87,6 +87,7 @@ class CaBotTCP():
                 common.logger.info("new socket.io connection")
                 #self.version_char.notify()
 
+
         self.version_char = common.VersionChar(self, "cabot_version")
 
         self.device_status_char = common.StatusChar(self, "device_status", cabot_manager.device_status, interval=5)
@@ -95,6 +96,7 @@ class CaBotTCP():
 
         self.speak_char = common.SpeakChar(self, "speak")
         self.event_char = common.EventChars(self, "navigate")
+        self.log_response_char = common.CaBotLogResponseChar(self, "log_response")
         self.handler = subchar_handler("/cabot")
         self.sio.register_namespace(self.handler)
         self.app.wsgi_app = socketio.WSGIApp(self.sio, wsgi_app=self.app.wsgi_app)
@@ -120,12 +122,10 @@ class CaBotTCP():
     def handleEventCallback(self, msg, request_id):
         self.event_char.handleEventCallback(msg, request_id)
 
-    def logResponse(self, request, request_id):
-        common.logger.info("cabot log response TCP")
-        # if request == "list":
-        #     response = self.cabot_manager.getLogList()
-        #     common.logger.info("cabot log response")
-        #     self.report_char.logResponse(response, request_id)
+    def logResponse(self, response):
+        common.logger.info("cabot log response")
+        self.log_response_char.response(response)
+
 
     def start(self):
         common.logger.info("CaBotTCP thread started")
