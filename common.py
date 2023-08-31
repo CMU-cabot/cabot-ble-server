@@ -171,32 +171,36 @@ def polling_ros():
 
 polling_ros()
 
-# q = queue.Queue()
+q = queue.Queue()
 
-# def observer():
-#     while True:
-#         while q.empty():
-#             logger.info("log request loop")
-#             time.sleep(3)
+def observer():
+    while True:
+        while q.empty():
+            logger.info("log request loop")
+            time.sleep(8)
 
-#         request = q.get()
-#         response_log(request)
+        request = q.get()
+        response_log(request)
 
-#         q.task_done()
+        q.task_done()
 
-# def response_log(request):
-#     global event_handlers
-#     if event_handlers.count == 0:
-#         logger.error("There is no event_handler instance")
+def response_log(request):
+    global event_handlers
+    if event_handlers.count == 0:
+        logger.error("There is no event_handler instance")
 
-#     request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
-#     for handler in event_handlers:
-#         logger.info("log test")
-#         handler.logResponse(request, request_id)
+    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+    for handler in event_handlers:
+        logger.info("log test")
+        handler.logResponse(request, request_id)
 
-# thread = threading.Thread(target=observer)
-# thread.setDaemon(True)
-# thread.start()
+def add_to_queue(request):
+    logger.info("log test queue put")
+    q.put(request)
+
+thread = threading.Thread(target=observer)
+thread.setDaemon(True)
+thread.start()
 
 # async def observer(q):
 #     while True:
@@ -238,9 +242,7 @@ polling_ros()
 # logger.info("log loop ready")
 # asyncio.run(main_wrapper())
 
-# def add_to_queue(request):
-#     global q
-#     q.put_nowait(request)
+
 
 # async def add_to_queue(request):
 #     global q
