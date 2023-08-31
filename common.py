@@ -171,18 +171,18 @@ def polling_ros():
 
 polling_ros()
 
-q = queue.Queue()
+log_request_queue = queue.Queue()
 
 def observer():
     while True:
-        while q.empty():
+        while log_request_queue.empty():
             logger.info("log request loop")
             time.sleep(1)
 
-        request = q.get()
-        response_log(request)
+        request_json = log_request_queue.get()
+        response_log(request_json)
 
-        q.task_done()
+        log_request_queue.task_done()
 
 
 def getLogList():
@@ -191,21 +191,49 @@ def getLogList():
     return result.split()
 
 
-def response_log(request):
+def response_log(request_json):
     global event_handlers
     if event_handlers.count == 0:
         logger.error("There is no event_handler instance")
+        return
 
-    if request == "list":
-        response_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+    try:
+        request = json.loads(request_json)
+    except json.JSONDecodeError as e:
+        logger.error(f"json cannot be parsed {e}")
+        return
+
+    if "type" not in request:
+        logger.error(f"not type in the request {request}")
+        return
+
+    request_type = request["type"]
+    response = {
+        "response_id": time.clock_gettime_ns(time.CLOCK_REALTIME),
+        "type": request_type
+        }
+    if request_type == "list":
+        # TODO: add is_submit_report, is_uploaded_to_box status
         log_names = getLogList()
-        for handler in event_handlers:
-            handler.logResponse({"response_id": response_id, "log_names": log_names})
+        response["log_list"] = [{"name": x} for x in log_names]
+    elif request_type == "detail":
+        # TODO: get title and detail by log_name
+        log_name = request["log_name"]
+        title = ""
+        detail = ""
+        response["log"] = {"name": log_name, "title": title, "detail": detail}
+    elif request_type == "report":
+        # TODO: save report
+        pass
+
+    for handler in event_handlers:
+        handler.logResponse(response)
 
 
-def add_to_queue(request):
-    logger.info(f"add to queue {request}")
-    q.put(request)
+
+def add_to_queue(request_json):
+    logger.info(f"add to queue {request_json}")
+    log_request_queue.put(request_json)
 
 
 thread = threading.Thread(target=observer)
@@ -411,7 +439,7 @@ class EventChars(BLENotifyChar):
         self.send_text(self.navi_uuid, jsonText)
 
 
-class CaBotLogRequestChar(BLESubChar):
+class CabotLogRequestChar(BLESubChar):
     def __init__(self, owner, uuid, manager):
         super().__init__(owner, uuid)
         self.manager = manager
@@ -421,7 +449,7 @@ class CaBotLogRequestChar(BLESubChar):
         add_to_queue(value)
 
 
-class CaBotLogResponseChar(BLENotifyChar):
+class CabotLogResponseChar(BLENotifyChar):
     def __init__(self, owner, uuid):
         super().__init__(owner, None)
         self.uuid = uuid
