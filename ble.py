@@ -74,8 +74,9 @@ class CaBotBLE:
         self.speak_char = common.SpeakChar(self, CABOT_BLE_UUID(0x30))
         self.event_char = common.EventChars(self, CABOT_BLE_UUID(0x40))
 
-        self.chars.append(common.CabotLogRequestChar(self, CABOT_BLE_UUID(0x50), self.cabot_manager))
-        self.log_response_char = common.CabotLogResponseChar(self, CABOT_BLE_UUID(0x51))
+        self.chars.append(common.CabotLogRequestChar(self, CABOT_BLE_UUID(0x50), 
+                                                     self.cabot_manager, 
+                                                     common.CabotLogResponseChar(self, CABOT_BLE_UUID(0x51))))
 
         self.chars.append(common.HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
 
@@ -256,13 +257,6 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
             for ble in self.bles.values():
                 if ble.event_char:
                     ble.event_char.handleEventCallback(msg, request_id)
-
-    def logResponse(self, response):
-        common.logger.info("cabot log response")
-        with self.bles_lock:
-            for ble in self.bles.values():
-                if ble.log_response_char:
-                    ble.log_response_char.response(response)
 
     def on_terminate(self, bledev):
         common.logger.info("terminate %s", bledev.target.path)
