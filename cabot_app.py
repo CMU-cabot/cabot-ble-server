@@ -321,12 +321,12 @@ def main():
             result = subprocess.call(["ssh", "-i", id_file_path, jetson_user + "@" + split_item[1], "exit"])
             if result != 0:
                 common.logger.error("Cannot connect Jetson host, please check ssh config. user:{}, host:{}, ssh key file:{}".format(jetson_user, split_item[1], id_file_path))
-                sys.exit()
+                continue
 
             result = subprocess.call(["ssh", "-i", id_file_path, jetson_user + "@" + split_item[1], "sudo poweroff -w"])
             if result != 0:
                 common.logger.error("Cannot call poweroff on Jetson host, please check sudoer config. user:{}, host:{}".format(jetson_user, split_item[1], id_file_path))
-                sys.exit()
+                continue
 
             jetson_poweroff_commands.append(["ssh", "-i", id_file_path, jetson_user + "@" + split_item[1], "sudo poweroff"])
 
