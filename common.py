@@ -220,6 +220,11 @@ class CabotManageChar(BLESubChar):
             self.manager.stop()
         if value == "start":
             self.manager.start()
+        if value.startswith("lang"):
+            lang = value[5:]
+            event = NavigationEvent(subtype="language", param=lang)
+            cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
+
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
@@ -352,7 +357,7 @@ class EventChars(BLENotifyChar):
         if event.type != NavigationEvent.TYPE:
             return
 
-        if event.subtype not in ["next", "arrived", "content", "sound"]:
+        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage"]:
             return
         req = {
             'request_id': request_id,

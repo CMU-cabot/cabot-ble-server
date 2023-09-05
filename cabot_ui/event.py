@@ -73,4 +73,3 @@ class ExplorationEvent(SubtypeEvent):
     TYPE = "exploration"
     def __init__(self, subtype=None, param=None):
         super(ExplorationEvent, self).__init__(type=ExplorationEvent.TYPE, subtype=subtype, param=param)
-
