@@ -24,6 +24,7 @@ docker-compose build --build-arg UID=$UID
 CABOT_NAME                  # cabot name
 CABOT_BLE_ADAPTER           # default is 'hci0'
 CABOT_START_AT_LAUNCH       # default is 0, launch cabot system if 1 at start up
+CABOT_NO_BLE                # default is false, do not use BLE if true
 ```
 
 ## variables for cabot2-ace battery configuration

@@ -270,11 +270,11 @@ class BLEDeviceManager(dgatt.DeviceManager, object):
 
     def device_discovered(self, device):
         if len(self.bles) == 0:
-            common.logger.info("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
+            common.logger.debug("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
         with self.bles_lock:
             if device.name == self.cabot_name:
                 if not device.path in self.bles.keys():
-                    common.logger.info("device {} {} discovered".format(device.name, device.path))
+                    common.logger.debug("device {} {} discovered".format(device.name, device.path))
                     ble = CaBotBLE(device=device, ble_manager=self, cabot_manager=self.cabot_manager)
                     self.bles[device.path] = ble
                     ble.thread = threading.Thread(target=ble.start)

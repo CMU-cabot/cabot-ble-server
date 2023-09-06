@@ -51,6 +51,7 @@ class CaBotTCP():
     def __init__(self, cabot_manager):
         self.sio = socketio.Server(async_mode="threading")
         self.app = Flask(__name__)
+        self.address = "tcp"
         self.cabot_manager = cabot_manager
         self.manage_cabot_char = common.CabotManageChar(self, "manage_cabot", cabot_manager)
         self.log_request_char = common.CabotLogRequestChar(self, "log_request",
@@ -152,6 +153,7 @@ class CaBotTCP():
 
 
     def stop(self):
+        common.logger.info("CaBotTCP thread stop")
         self.alive = False
         self.ready = False
         self.device_status_char.stop()

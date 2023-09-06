@@ -12,7 +12,7 @@ import logging
 
 from cabot import util
 
-DEBUG=True
+DEBUG=False
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
@@ -276,7 +276,7 @@ class DeviceManager:
                         result = result and (uuid in UUIDs)
                 if not result:
                     continue
-                logger.info(path)
+                logger.debug(path)
                 if path not in self.discovered:
                     with self.mutex:
                         self.discovered[path] = self.make_device(path)
@@ -308,7 +308,7 @@ if __name__ == "__main__":
 
     class MyDeviceManager(DeviceManager):
         def device_discovered(self, device):
-            logger.info(device.path)
+            logger.debug(device.path)
     
     dm = MyDeviceManager()
 

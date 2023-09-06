@@ -207,6 +207,7 @@ class CaBotManager(BatteryDriverDelegate):
 
     def _check_service_active(self):
         result = self._runprocess(["systemctl", "--user", "is-active", "cabot"])
+        common.logger.info(f"_check_service_active {result}")
         if not result:
             return
         if result.returncode == 0:
@@ -234,7 +235,7 @@ class CaBotManager(BatteryDriverDelegate):
             common.logger.info("lock could not be acquired")
             return result
         try:
-            # common.logger.info("calling %s", str(command))
+            common.logger.info("calling %s", str(command))
             result = subprocess.call(command)
         except:
             common.logger.error(traceback.format_exc())
@@ -243,10 +244,10 @@ class CaBotManager(BatteryDriverDelegate):
                 lock.release()
         return result
 
-    def reboot(self):
+    def rebootPC(self):
         self._call(["sudo", "systemctl", "reboot"], lock=self.systemctl_lock)
 
-    def poweroff(self):
+    def poweroffPC(self):
         if self._jetson_poweroff_commands is not None:
             for command in self._jetson_poweroff_commands:
                 common.logger.info("send shutdown request to jetson: %s", str(command))
@@ -254,11 +255,11 @@ class CaBotManager(BatteryDriverDelegate):
 
         self._call(["sudo", "systemctl", "poweroff"], lock=self.systemctl_lock)
 
-    def start(self):
+    def startCaBot(self):
         self._call(["systemctl", "--user", "start", "cabot"], lock=self.systemctl_lock)
         self._cabot_system_status.activating()
 
-    def stop(self):
+    def stopCaBot(self):
         self._call(["systemctl", "--user", "stop", "cabot"], lock=self.systemctl_lock)
         self._cabot_system_status.deactivating()
 
@@ -297,6 +298,9 @@ def main():
 
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else None
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else None
+
+    no_ble = os.environ['CABOT_NO_BLE']=='true' if 'CABOT_NO_BLE' in os.environ else False
+    common.logger.info(f"No BLE = {no_ble}")
 
     cabot_manager = CaBotManager()
     jetson_poweroff_commands = None
@@ -386,24 +390,28 @@ def main():
                 else:
                     tcp_server.start()
 
-            if ble_manager is not None:
-                common.remove_event_handler(ble_manager)
-            ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
-            common.add_event_handler(ble_manager)
-            # power on the adapter
-            try:
-                while not ble_manager.is_adapter_powered and not quit_flag:
-                    common.logger.info("Bluetooth is off, so powering on")
-                    ble_manager.is_adapter_powered = True
+            if not no_ble:
+                if ble_manager is not None:
+                    common.remove_event_handler(ble_manager)
+                ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
+                common.add_event_handler(ble_manager)
+                # power on the adapter
+                try:
+                    while not ble_manager.is_adapter_powered and not quit_flag:
+                        common.logger.info("Bluetooth is off, so powering on")
+                        ble_manager.is_adapter_powered = True
+                        time.sleep(1)
+                    ble_manager.start_discovery(DISCOVERY_UUIDS)
+                    ble_manager.run()
+                except KeyboardInterrupt:
+                    common.logger.info("keyboard interrupt")
+                    break
+                except:
+                    common.logger.info(traceback.format_exc())
                     time.sleep(1)
-                ble_manager.start_discovery(DISCOVERY_UUIDS)
-                ble_manager.run()
-            except KeyboardInterrupt:
-                common.logger.info("keyboard interrupt")
-                break
-            except:
-                common.logger.info(traceback.format_exc())
-                time.sleep(1)
+            else:
+                while not quit_flag:
+                    time.sleep(1)
     except KeyboardInterrupt:
         common.logger.info("keyboard interrupt")
     except Exception as e:

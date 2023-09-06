@@ -326,8 +326,6 @@ class BatteryStatus:
             }]
         }
 
-    def stop(self):
-        pass
 
 class PrintDelegate(BatteryDriverDelegate):
     def __init__(self):
