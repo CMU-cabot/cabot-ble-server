@@ -20,22 +20,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import gzip
-import math
-import queue
 import os
 import time
 import json
 import threading
 import traceback
 import logging
-import re
-import signal
 import subprocess
-import sys
 from uuid import UUID
-
-import dgatt
 
 import roslibpy
 from roslibpy.comm import RosBridgeClientFactory
@@ -43,7 +35,8 @@ from roslibpy.comm import RosBridgeClientFactory
 from cabot import util
 from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
-from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
+from cabot_ace import BatteryDriverDelegate
+from cabot_log_report import LogReport
 
 CABOT_BLE_VERSION = "20230222"
 
@@ -169,6 +162,7 @@ def polling_ros():
         pass
 
 polling_ros()
+
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -368,6 +362,31 @@ class EventChars(BLENotifyChar):
         jsonText = json.dumps(req, separators=(',', ':'))
         self.send_text(self.navi_uuid, jsonText)
 
+
+class CabotLogRequestChar(BLESubChar):
+    def __init__(self, owner, uuid, manager, response_char):
+        super().__init__(owner, uuid)
+        self.manager = manager
+        self.response_char = response_char
+
+    def callback(self, handle, value):
+        value = value.decode("utf-8")
+        self.manager.add_log_request(value, self.response_callback)
+
+    def response_callback(self, response):
+        self.response_char.respond(response)
+
+
+class CabotLogResponseChar(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, None)
+        self.uuid = uuid
+
+    def respond(self, response):
+        jsonText = json.dumps(response, separators=(',', ':'))
+        self.send_text(self.uuid, jsonText)
+
+
 class DeviceStatus:
     def __init__(self):
         self.level = "Unknown"
@@ -451,124 +470,3 @@ class SystemStatus:
     def stop(self):
         self.deactivating()
         self.diagnostics = []
-
-class CaBotManager(BatteryDriverDelegate):
-    def __init__(self):
-        self._device_status = DeviceStatus()
-        self._cabot_system_status = SystemStatus()
-        self._battery_status = None
-        self.systemctl_lock = threading.Lock()
-        self.start_flag = False
-        self.stop_run = None
-        self.check_interval = 1
-        self.run_count = 0
-
-    def run(self, start=False):
-        self.start_flag=start
-        self._run_once()
-        self.stop_run = self._run()
-
-    def stop(self):
-        if self.stop_run:
-            self.stop_run.set()
-
-    # BatteryDriverDelegate start
-    def battery_status(self, status):
-        self._battery_status = status
-        if status.shutdown or status.lowpower_shutdown:
-            logger.info("shutdown requested")
-            self.stop()
-            self.poweroff()
-    # BatteryDriverDelegate end
-
-    @util.setInterval(5)
-    def _run(self):
-        self._run_once()
-
-    def _run_once(self):
-        self.run_count += 1
-        if self.check_interval <= self.run_count:
-            self._check_device_status()
-            self._check_service_active()
-            self.run_count = 0
-
-        if self.start_flag:
-            if self._device_status.level == "OK":
-                self.start_flag = False
-                if self._cabot_system_status.level != "Active":
-                    self.start()
-            else:
-                logger.info("Start at launch is requested, but device is not OK")
-
-    def _check_device_status(self):
-        if self._cabot_system_status.is_active():
-            result = self._runprocess(["sudo", "-E", "./check_device_status.sh", "-j", "-s"])
-        else:
-            result = self._runprocess(["sudo", "-E", "./check_device_status.sh", "-j"])
-        if result and result.returncode == 0:
-            self._device_status.ok()
-        else:
-            self._device_status.error()
-        self._device_status.set_json(result.stdout)
-
-    def _check_service_active(self):
-        result = self._runprocess(["systemctl", "--user", "is-active", "cabot"])
-        if not result:
-            return
-        if result.returncode == 0:
-            self._cabot_system_status.active()
-        else:
-            if result.stdout.strip() == "inactive":
-                self._cabot_system_status.inactive()
-            elif result.stdout.strip() == "failed":
-                self._cabot_system_status.inactive()
-            elif result.stdout.strip() == "deactivating":
-                self._cabot_system_status.deactivating()
-            else:
-                logger.info("check_service_active unknown status: %s", result.stdout.strip())
-
-        global diagnostics
-        self._cabot_system_status.set_diagnostics(diagnostics)
-        diagnostics = []
-
-    def _runprocess(self, command):
-        return subprocess.run(command, capture_output=True, text=True, env=os.environ.copy())
-
-    def _call(self, command, lock=None):
-        result = 0
-        if lock is not None and not lock.acquire(blocking=False):
-            logger.info("lock could not be acquired")
-            return result
-        try:
-            # logger.info("calling %s", str(command))
-            result = subprocess.call(command)
-        except:
-            logger.error(traceback.format_exc())
-        finally:
-            if lock is not None:
-                lock.release()
-        return result
-
-    def reboot(self):
-        self._call(["sudo", "systemctl", "reboot"], lock=self.systemctl_lock)
-
-    def poweroff(self):
-        self._call(["sudo", "systemctl", "poweroff"], lock=self.systemctl_lock)
-
-    def start(self):
-        self._call(["systemctl", "--user", "start", "cabot"], lock=self.systemctl_lock)
-        self._cabot_system_status.activating()
-
-    def stop(self):
-        self._call(["systemctl", "--user", "stop", "cabot"], lock=self.systemctl_lock)
-        self._cabot_system_status.deactivating()
-
-    def device_status(self):
-        return self._device_status
-
-    def cabot_system_status(self):
-        return self._cabot_system_status
-
-    def cabot_battery_status(self):
-        return self._battery_status
-

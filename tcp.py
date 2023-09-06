@@ -53,6 +53,9 @@ class CaBotTCP():
         self.app = Flask(__name__)
         self.cabot_manager = cabot_manager
         self.manage_cabot_char = common.CabotManageChar(self, "manage_cabot", cabot_manager)
+        self.log_request_char = common.CabotLogRequestChar(self, "log_request",
+                                                            cabot_manager, 
+                                                            common.CabotLogResponseChar(self, "log_response"))
         self.log_char = common.CabotLogChar(self, "log", cabot_manager)
         self.summons_char = common.SummonsChar(self, "summons")
         self.destination_char = common.DestinationChar(self, "destination")
@@ -87,6 +90,11 @@ class CaBotTCP():
                 common.logger.info("new socket.io connection")
                 #self.version_char.notify()
 
+            @self.sio.event
+            def log_request(sid, data):
+                self.log_request_char.callback(0, data[0])
+
+
         self.version_char = common.VersionChar(self, "cabot_version")
 
         self.device_status_char = common.StatusChar(self, "device_status", cabot_manager.device_status, interval=5)
@@ -95,6 +103,7 @@ class CaBotTCP():
 
         self.speak_char = common.SpeakChar(self, "speak")
         self.event_char = common.EventChars(self, "navigate")
+
         self.handler = subchar_handler("/cabot")
         self.sio.register_namespace(self.handler)
         self.app.wsgi_app = socketio.WSGIApp(self.sio, wsgi_app=self.app.wsgi_app)

@@ -64,6 +64,7 @@ RUN apt update && \
 	rfkill \
 	sudo \
 	systemd \
+	wireless-tools \
 	&& \
 	apt clean && \
 	rm -rf /var/lib/apt/lists/*
@@ -93,6 +94,7 @@ COPY cabot $HOME/cabot
 COPY cabot_ui $HOME/cabot_ui
 COPY cabot_ace $HOME/cabot_ace
 COPY cabot_app.py $HOME/cabot_app.py
+COPY cabot_log_report.py $HOME/cabot_log_report.py
 COPY common.py $HOME/common.py
 COPY ble.py $HOME/ble.py
 COPY tcp.py $HOME/tcp.py

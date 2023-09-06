@@ -47,6 +47,7 @@ from cabot import util
 from cabot.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
+from cabot_log_report import LogReport
 
 MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
@@ -145,6 +146,7 @@ class CaBotManager(BatteryDriverDelegate):
         self._device_status = DeviceStatus()
         self._cabot_system_status = SystemStatus()
         self._battery_status = None
+        self._log_report = LogReport()
         self.systemctl_lock = threading.Lock()
         self.start_flag = False
         self.stop_run = None
@@ -169,6 +171,9 @@ class CaBotManager(BatteryDriverDelegate):
             self.stop()
             self.poweroff()
     # BatteryDriverDelegate end
+
+    def add_log_request(self, request, callback):
+        self._log_report.add_to_queue(request, callback)
 
     @util.setInterval(5)
     def _run(self):
@@ -371,6 +376,8 @@ def main():
                 common.logger.error("Could not restart bluetooth service")
                 time.sleep(1)
                 continue
+
+            common.clear_event_handler()
 
             if tcp_server is None:
                 tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
