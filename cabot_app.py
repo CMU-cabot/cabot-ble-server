@@ -377,8 +377,6 @@ def main():
                 time.sleep(1)
                 continue
 
-            common.clear_event_handler()
-
             if tcp_server is None:
                 tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
                 common.add_event_handler(tcp_server)
@@ -388,6 +386,8 @@ def main():
                 else:
                     tcp_server.start()
 
+            if ble_manager is not None:
+                common.remove_event_handler(ble_manager)
             ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
             common.add_event_handler(ble_manager)
             # power on the adapter
