@@ -6,3 +6,4 @@ dbus-python
 Flask
 python-socketio
 simple-websocket
+bleak

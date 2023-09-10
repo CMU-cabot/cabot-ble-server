@@ -98,7 +98,6 @@ COPY cabot_log_report.py $HOME/cabot_log_report.py
 COPY common.py $HOME/common.py
 COPY ble.py $HOME/ble.py
 COPY tcp.py $HOME/tcp.py
-COPY dgatt.py $HOME/dgatt.py
 COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale

@@ -20,41 +20,27 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import gzip
-import math
-import queue
+import asyncio
 import os
 import time
 import json
 import threading
 import traceback
-import logging
-import re
 import signal
 import subprocess
 import sys
-from uuid import UUID
 
-import dgatt
 import common
 import ble
 import tcp
 
-import roslibpy
-from roslibpy.comm import RosBridgeClientFactory
-
 from cabot import util
-from cabot.event import BaseEvent
-from cabot_ui.event import NavigationEvent
-from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
+from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate
 from cabot_log_report import LogReport
 
-MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
-CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
-#DISCOVERY_UUIDS=[str(CABOT_BLE_VERSION(0))]
-DISCOVERY_UUIDS=[]
-WAIT_AFTER_CONNECTION=0.25 # wait a bit after connection to avoid error
-
+MTU_SIZE = 2**10  # could be 2**15, but 2**10 is enough
+CHAR_WRITE_MAX_SIZE = 512  # should not be exceeded this value
+WAIT_AFTER_CONNECTION = 0.25  # wait a bit after connection to avoid error
 
 
 class DeviceStatus:
@@ -290,7 +276,8 @@ def sigint_handler(sig, frame):
     else:
         common.logger.error("Unexpected signal")
 
-def main():
+
+async def main():
     signal.signal(signal.SIGINT, sigint_handler)
     cabot_name = os.environ['CABOT_NAME'] if 'CABOT_NAME' in os.environ else None
     adapter_name = os.environ['CABOT_BLE_ADAPTER'] if 'CABOT_BLE_ADAPTER' in os.environ else "hci0"
@@ -300,7 +287,8 @@ def main():
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else None
 
     no_ble = os.environ['CABOT_NO_BLE']=='true' if 'CABOT_NO_BLE' in os.environ else False
-    common.logger.info(f"No BLE = {no_ble}")
+    no_tcp = os.environ['CABOT_NO_TCP']=='true' if 'CABOT_NO_TCP' in os.environ else False
+    common.logger.info(f"No BLE = {no_ble}, No TCP = {no_tcp}")
 
     cabot_manager = CaBotManager()
     jetson_poweroff_commands = None
@@ -368,19 +356,7 @@ def main():
 
     tcp_server_thread = None
     try:
-        while not quit_flag:
-            result = subprocess.call(["sudo", "rfkill", "unblock", "bluetooth"])
-            if result != 0:
-                common.logger.error("Could not unblock rfkill bluetooth")
-                time.sleep(1)
-                continue
-
-            result = subprocess.call(["sudo", "systemctl", "restart", "bluetooth"])
-            if result != 0:
-                common.logger.error("Could not restart bluetooth service")
-                time.sleep(1)
-                continue
-
+        if not no_tcp:
             if tcp_server is None:
                 tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
                 common.add_event_handler(tcp_server)
@@ -390,31 +366,18 @@ def main():
                 else:
                     tcp_server.start()
 
-            if not no_ble:
-                if ble_manager is not None:
-                    common.remove_event_handler(ble_manager)
-                ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
-                common.add_event_handler(ble_manager)
-                # power on the adapter
-                try:
-                    while not ble_manager.is_adapter_powered and not quit_flag:
-                        common.logger.info("Bluetooth is off, so powering on")
-                        ble_manager.is_adapter_powered = True
-                        time.sleep(1)
-                    ble_manager.start_discovery(DISCOVERY_UUIDS)
-                    ble_manager.run()
-                except KeyboardInterrupt:
-                    common.logger.info("keyboard interrupt")
-                    break
-                except:
-                    common.logger.info(traceback.format_exc())
-                    time.sleep(1)
-            else:
-                while not quit_flag:
-                    time.sleep(1)
+        if not no_ble:
+            if ble_manager is not None:
+                common.remove_event_handler(ble_manager)
+            ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)
+            common.add_event_handler(ble_manager)
+            await ble_manager.run()
+        else:
+            while not quit_flag:
+                time.sleep(1)
     except KeyboardInterrupt:
         common.logger.info("keyboard interrupt")
-    except Exception as e:
+    except:
         common.logger.info(traceback.format_exc())
     finally:
         try:
@@ -431,4 +394,4 @@ def main():
             common.logger.info(traceback.format_exc())
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
