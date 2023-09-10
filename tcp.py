@@ -49,7 +49,7 @@ from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, B
 class CaBotTCP():
 
     def __init__(self, cabot_manager):
-        self.sio = socketio.Server(async_mode="threading")
+        self.sio = socketio.Server(async_mode="threading", cors_allowed_origins="*")
         self.app = Flask(__name__)
         self.address = "tcp"
         self.cabot_manager = cabot_manager
