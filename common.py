@@ -213,18 +213,17 @@ class CabotManageChar(BLESubChar):
     def callback(self, handle, value):
         value = value.decode("utf-8")
         if value == "reboot":
-            self.manager.reboot()
+            self.manager.rebootPC()
         if value == "poweroff":
-            self.manager.poweroff()
+            self.manager.poweroffPC()
         if value == "stop":
-            self.manager.stop()
+            self.manager.stopCaBot()
         if value == "start":
-            self.manager.start()
+            self.manager.startCaBot()
         if value.startswith("lang"):
             lang = value[5:]
             event = NavigationEvent(subtype="language", param=lang)
             cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
-
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
@@ -323,8 +322,6 @@ class StatusChar(BLENotifyChar):
             self.send_text(self.uuid, status)
 
     def stop(self):
-        if self.func():
-            self.func().stop()
         if self.loopStop:
             self.loopStop.set()
 
@@ -432,9 +429,6 @@ class DeviceStatus:
             'devices': self.devices
         }
 
-    def stop(self):
-        pass
-
 class SystemStatus:
     def __init__(self):
         self.level = "Unknown"
@@ -471,7 +465,3 @@ class SystemStatus:
             'level': self.level,
             'diagnostics': self.diagnostics
         }
-
-    def stop(self):
-        self.deactivating()
-        self.diagnostics = []
