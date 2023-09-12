@@ -29,6 +29,7 @@ from uuid import UUID
 import queue
 import time
 import traceback
+import threading
 
 import common
 
@@ -41,6 +42,7 @@ class BLEDeviceManager:
         self._tasks = set()
         self.bles = {}
         self.alive = True
+        self.bles_lock = threading.Lock()
 
     def add_task(self, coroutine):
         self._tasks.add(asyncio.create_task(coroutine))
@@ -133,14 +135,31 @@ class BLEDeviceManager:
             if device.address not in self.bles.keys():
                 common.logger.debug("device {} {} discovered".format(device.name, device.address))
                 ble = CaBotBLE(device=device, ble_manager=self, cabot_manager=self.cabot_manager)
-                self.bles[device.address] = ble
+                with self.bles_lock:
+                    self.bles[device.address] = ble
                 self.add_task(ble.start())
             else:
                 pass
 
     def on_terminate(self, bledev):
         common.logger.info("terminate %s", bledev.address)
-        self.bles.pop(bledev.address)
+        with self.bles_lock:
+            self.bles.pop(bledev.address)
+
+    def handleSpeak(self, req, res):
+        common.logger.info("/speak request ble (%s)", str(req))
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.speak_char:
+                    ble.speak_char.handleSpeak(req=req)
+        res['result'] = True
+        return True
+
+    def handleEventCallback(self, msg, request_id):
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.event_char:
+                    ble.event_char.handleEventCallback(msg, request_id)
 
 
 def CABOT_BLE_UUID(_id):
