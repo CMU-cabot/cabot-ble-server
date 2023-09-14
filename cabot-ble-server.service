@@ -2,7 +2,7 @@
 Description = CaBot BLE Server
 
 [Service]
-ExecStart = docker-compose up ble
+ExecStart = /opt/cabot-ble-server/launch.sh
 Restart = always
 WorkingDirectory = /opt/cabot-ble-server
 Type = simple
