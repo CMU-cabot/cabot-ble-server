@@ -4,6 +4,7 @@ import os
 import sys
 import inspect
 import logging
+import termios
 import traceback
 import threading
 import queue
