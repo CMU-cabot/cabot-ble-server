@@ -169,7 +169,7 @@ class CaBotManager(BatteryDriverDelegate):
         if status.shutdown or status.lowpower_shutdown:
             common.logger.info("shutdown requested")
             self.stop()
-            self.poweroff()
+            self.poweroffPC()
     # BatteryDriverDelegate end
 
     def add_log_request(self, request, callback):
