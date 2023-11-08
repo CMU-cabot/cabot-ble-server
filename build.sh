@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker-compose build --build-arg UID=$UID
+docker compose build --build-arg UID=$UID
