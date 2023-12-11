@@ -218,7 +218,9 @@ class CabotManageChar(BLESubChar):
             self.manager.poweroffPC()
         if value == "stop":
             self.manager.stopCaBot()
-        if value == "start":
+        if "start" in value:
+            service_name = value.replace("start", "cabot")
+            self.manager.service_name = service_name.replace("_", "-")
             self.manager.startCaBot()
         if value.startswith("lang"):
             lang = value[5:]

@@ -153,6 +153,7 @@ class CaBotManager(BatteryDriverDelegate):
         self.check_interval = 1
         self.run_count = 0
         self._jetson_poweroff_commands = jetson_poweroff_commands
+        self.service_name = "cabot"
 
     def run(self, start=False):
         self.start_flag=start
@@ -206,7 +207,7 @@ class CaBotManager(BatteryDriverDelegate):
         self._device_status.set_json(result.stdout)
 
     def _check_service_active(self):
-        result = self._runprocess(["systemctl", "--user", "is-active", "cabot"])
+        result = self._runprocess(["systemctl", "--user", "is-active", self.service_name])
         common.logger.info(f"_check_service_active {result}")
         if not result:
             return
@@ -256,11 +257,11 @@ class CaBotManager(BatteryDriverDelegate):
         self._call(["sudo", "systemctl", "poweroff"], lock=self.systemctl_lock)
 
     def startCaBot(self):
-        self._call(["systemctl", "--user", "start", "cabot"], lock=self.systemctl_lock)
+        self._call(["systemctl", "--user", "start", self.service_name], lock=self.systemctl_lock)
         self._cabot_system_status.activating()
 
     def stopCaBot(self):
-        self._call(["systemctl", "--user", "stop", "cabot"], lock=self.systemctl_lock)
+        self._call(["systemctl", "--user", "stop", self.service_name], lock=self.systemctl_lock)
         self._cabot_system_status.deactivating()
 
     def device_status(self):
