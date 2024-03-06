@@ -45,6 +45,7 @@ services:
       - CABOT_ID_DIR=/home/developer/.ssh
       - CABOT_ID_FILE
       - CABOT_NO_BLE
+      - CABOT_NO_TCP
       - LIDAR_IF
       - LIDAR_IP
       - MICRO_CONTROLLER

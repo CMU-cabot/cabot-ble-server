@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (c) 2022  Carnegie Mellon University
+# Copyright (c) 2023  Carnegie Mellon University
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -20,41 +20,158 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import asyncio
+from bleak import BleakScanner, BleakClient
+import dbus
 import gzip
 import math
-import queue
-import os
-import time
-import json
-import threading
-import traceback
-import logging
-import re
-import signal
-import subprocess
-import sys
 from uuid import UUID
+import queue
+import time
+import traceback
+import threading
 
-import dgatt
 import common
 
-import roslibpy
 
-from cabot import util
-from cabot.event import BaseEvent
-from cabot_ui.event import NavigationEvent
-from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
+class BLEDeviceManager:
+    def __init__(self, adapter_name, cabot_name, cabot_manager):
+        self.adapter_name = adapter_name
+        self.cabot_name = cabot_name
+        self.cabot_manager = cabot_manager
+        self._tasks = set()
+        self.bles = {}
+        self.alive = True
+        self.bles_lock = threading.Lock()
 
-CABOT_BLE_UUID = lambda _id: UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".format(_id))
-MTU_SIZE = 2**10 # could be 2**15, but 2**10 is enough
-CHAR_WRITE_MAX_SIZE = 512 # should not be exceeded this value
-DISCOVERY_UUIDS=[]
-WAIT_AFTER_CONNECTION=0.25 # wait a bit after connection to avoid error
+    def add_task(self, coroutine):
+        self._tasks.add(asyncio.create_task(coroutine))
+
+    def get_tasks(self):
+        if self._tasks:
+            common.logger.debug(f"new tasks {self._tasks}")
+        running_tasks = [task for task in self._tasks]
+        self._tasks.clear()
+        return running_tasks
+
+    async def device_discovery(self):
+        service_uuids = [str(CABOT_BLE_UUID(0))]
+        while self.alive:
+            try:
+                common.logger.info("discover")
+                devices = await BleakScanner.discover(service_uuids=service_uuids)
+                if devices:
+                    common.logger.info(f"BLE devices are found {devices}")
+                    for d in devices:
+                        self.device_discovered(d)
+                else:
+                    common.logger.info("BLE Devices are not found")
+                if self.bles:
+                    await asyncio.sleep(5)
+            except:  # noqa: E722
+                await asyncio.sleep(5)
+
+    async def enable_bluetooth(self):
+        import subprocess
+        while self.alive:
+            bus = dbus.SystemBus()
+            bluez_adapter = bus.get_object("org.bluez", "/org/bluez/" + self.adapter_name)
+            is_adapter_powered = bluez_adapter.Get("org.bluez.Adapter1", "Powered",
+                                                   dbus_interface='org.freedesktop.DBus.Properties') == 1
+
+            if is_adapter_powered:
+                await asyncio.sleep(5)
+                continue
+
+            common.logger.warn("bluetooth is off, sudo rfkill unblock bluetooth")
+            result = subprocess.call(["sudo", "rfkill", "unblock", "bluetooth"])
+            if result != 0:
+                common.logger.error("Could not unblock rfkill bluetooth")
+                continue
+            await asyncio.sleep(1)
+
+            common.logger.warn("bluetooth is off, sudo systemctl restart bluetooth")
+            result = subprocess.call(["sudo", "systemctl", "restart", "bluetooth"])
+            if result != 0:
+                common.logger.error("Could not restart bluetooth service")
+                continue
+            await asyncio.sleep(1)
+
+            while not is_adapter_powered and self.alive:
+                bus = dbus.SystemBus()
+                bluez_adapter = bus.get_object("org.bluez", "/org/bluez/" + self.adapter_name)
+                temp = dbus.Interface(bluez_adapter, 'org.freedesktop.DBus.Properties')
+                temp.Set("org.bluez.Adapter1", "Powered", True)
+                is_adapter_powered = bluez_adapter.Get("org.bluez.Adapter1", "Powered",
+                                                       dbus_interface='org.freedesktop.DBus.Properties') == 1
+                common.logger.info("Bluetooth is off, so powering on")
+                await asyncio.sleep(1)
+
+    async def run(self):
+        self.add_task(self.device_discovery())
+        self.add_task(self.enable_bluetooth())
+
+        running_tasks = self.get_tasks()
+        while self.alive:
+            if running_tasks:
+                common.logger.debug(f"run tasks {running_tasks}")
+                done, running_tasks = await asyncio.wait(running_tasks, timeout=1.0, return_when=asyncio.FIRST_COMPLETED)
+                if done:
+                    common.logger.debug(f"done task {done}")
+            else:
+                # TODO
+                # need to improve to deal with multiple devices
+                # this can still connect with multiple devices if the devices are found at once
+                # await asyncio.sleep(1)
+                self.alive = False
+                continue
+            running_tasks.update(self.get_tasks())
+
+    def stop(self):
+        self.alive = False
+
+    def device_discovered(self, device):
+        if device.name == f"CaBot-{self.cabot_name}":
+            if device.address not in self.bles.keys():
+                common.logger.debug("device {} {} discovered".format(device.name, device.address))
+                ble = CaBotBLE(device=device, ble_manager=self, cabot_manager=self.cabot_manager)
+                with self.bles_lock:
+                    self.bles[device.address] = ble
+                self.add_task(ble.start())
+            else:
+                pass
+
+    def on_terminate(self, bledev):
+        common.logger.info("terminate %s", bledev.address)
+        with self.bles_lock:
+            self.bles.pop(bledev.address)
+
+    def handleSpeak(self, req, res):
+        common.logger.info("/speak request ble (%s)", str(req))
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.speak_char:
+                    ble.speak_char.handleSpeak(req=req)
+        res['result'] = True
+        return True
+
+    def handleEventCallback(self, msg, request_id):
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.event_char:
+                    ble.event_char.handleEventCallback(msg, request_id)
+
+
+def CABOT_BLE_UUID(_id):
+    return UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".format(_id))
+
+
+CHAR_WRITE_MAX_SIZE = 512  # should not be exceeded this value
+
 
 class CaBotBLE:
-
     def __init__(self, device, ble_manager, cabot_manager):
-        self.target = device
+        self.device = device
         self.address = device.address
         self.ble_manager = ble_manager
         self.cabot_manager = cabot_manager
@@ -74,8 +191,8 @@ class CaBotBLE:
         self.speak_char = common.SpeakChar(self, CABOT_BLE_UUID(0x30))
         self.event_char = common.EventChars(self, CABOT_BLE_UUID(0x40))
 
-        self.chars.append(common.CabotLogRequestChar(self, CABOT_BLE_UUID(0x50), 
-                                                     self.cabot_manager, 
+        self.chars.append(common.CabotLogRequestChar(self, CABOT_BLE_UUID(0x50),
+                                                     self.cabot_manager,
                                                      common.CabotLogResponseChar(self, CABOT_BLE_UUID(0x51))))
 
         self.chars.append(common.HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
@@ -87,11 +204,10 @@ class CaBotBLE:
         self.ready = False
 
         self.queue = queue.PriorityQueue()
-        self.check_queue_stop = self.check_queue()
         self.error_count = 0
 
     def send_text(self, uuid, text, priority=10):
-        data = ("%s"%(text)).encode("utf-8")
+        data = f"{text}".encode("utf-8")
         self.send_data(uuid, data, priority)
 
     def send_data(self, uuid, data, priority=10):
@@ -120,102 +236,78 @@ class CaBotBLE:
         common.logger.info("data/gzip length = %d/%d (%.0f%%)", length1, length0, length1/length0*100.0)
         return packets
 
-    @util.setInterval(0.01)
-    def check_queue(self):
+    async def check_queue(self):
         if not self.ready:
             return
         if self.queue.empty():
             return
         common.logger.info("queue size = {}".format(self.queue.qsize()))
         (priority, uuid, data) = self.queue.get()
-        try:
-            handle = self.target.get_handle(uuid)
-        except:
-            common.logger.error(traceback.format_exc())
-            common.logger.info("Could not get handle {}", )
-            return
 
         start = time.time()
         try:
             total = 0
             for packet in self.make_packets(data, CHAR_WRITE_MAX_SIZE):
                 total += len(packet)
-                self.target.char_write_handle(handle, value=packet, wait_for_response=True, timeout=2)
+                await self.client.write_gatt_char(uuid, packet, True)
             common.logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
-                        total, (time.time()-start), total*8/(time.time()-start)/1024)
+                               total, (time.time()-start), total*8/(time.time()-start)/1024)
             self.error_count = 0
-        except:
+        except:  # noqa: E722
             self.error_count += 1
             if self.error_count > 3:
                 self.alive = False
             else:
                 self.queue.put((priority, uuid, data))
-                #common.logger.info(traceback.format_exc())
+                # common.logger.info(traceback.format_exc())
                 common.logger.error("check_queue got an error {}".format(self.error_count))
 
-    def start(self):
-        common.logger.info("CaBotBLE thread started")
-        self.alive = True
-        start_time = time.time()
-        try:
-            # if the device is disconnected and it already past 10 minutes then start over from scanning BLE MAC address
-            # because iOS change MAC address pediodically
-            while time.time() - start_time < 60*10 and self.alive:
-                try:
-                    common.logger.info("trying to connect to %s", self.target)
-                    if not self.target.connect():
-                        common.logger.error("Cannot connect to {}".format(self.target))
-                        break
-                except:
-                    common.logger.error(traceback.format_exc())
-                    break
+    async def start(self):
+        async with BleakClient(self.device.address) as client:
+            class ClientWrapper:
+                def __init__(self, ble_manager, client):
+                    self.ble_manager = ble_manager
+                    self.client = client
 
-                if not self.target.connected:
-                    common.logger.info("not connected")
-                    self.alive = False
-                    break
-                common.logger.info("connected")
-                time.sleep(WAIT_AFTER_CONNECTION)
+                def subscribe(self, uuid, callback, indication):
+                    self.ble_manager.add_task(self._subscribe(uuid, callback, indication))
 
-                error=False
-                for char in self.chars:
-                    target = self.target.get_characteristic(char.uuid)
-                    if target:
-                        char.subscribe_to(target)
-                    else:
-                        char.not_found()
-                        error=True
-                self.device_status_char.start()
-                self.ros_status_char.start()
-                self.battery_status_char.start()
-                if error:
-                    common.logger.error("cannot find characteristic")
-                    break
-                self.ready = True
-                self.version_char.notify()
+                async def _subscribe(self, uuid, callback, indication):
+                    await self.client.start_notify(uuid, callback)
+                
+            if not client.is_connected:
+                common.logger.info("cannot connect")
+                return
+            self.device_status_char.start()
+            self.ros_status_char.start()
+            self.battery_status_char.start()
+            self.ready = True
+            self.alive = True
+            self.client = client
+            common.logger.info("connected")
+            service = client.services.get_service(CABOT_BLE_UUID(0))
+            if not service:
+                return
+            common.logger.info(f"got service {service}")
 
-                # wait while heart beat is valid
-                self.last_heartbeat = time.time()
-                timeout = 3.0
-                while time.time() - self.last_heartbeat < timeout and self.alive:
-                    if time.time() - self.last_heartbeat > timeout/2.0:
-                        common.logger.warning("No heartbeat, reconnecting in %.1f seconds %s", timeout - (time.time() - self.last_heartbeat), self.address)
-                    time.sleep(0.5)
-                self.ready = False
-                self.alive = False
-
-            common.logger.error("exit while loop")
-        except:
-            common.logger.error(traceback.format_exc())
-        finally:
-            common.logger.error("stopping")
+            wrapper = ClientWrapper(self.ble_manager, client)
             for char in self.chars:
-                if char.target:
-                    char.target.stop()
-            self.stop()
-            common.logger.error("sending on_terminate")
-            self.ble_manager.on_terminate(self)
-        common.logger.info("CaBotBLE thread ended")
+                char.subscribe_to(wrapper)
+
+            common.logger.info("started heart beat")
+            try:
+                self.version_char.notify()
+                common.logger.info("sent version")
+            except:  # noqa: E722
+                traceback.print_exc()
+
+            self.last_heartbeat = time.time()
+            timeout = 3.0
+            while client.is_connected and time.time() - self.last_heartbeat < timeout and self.alive:
+                await self.check_queue()
+                await asyncio.sleep(0.01)
+            common.logger.info("client maybe disconnected")
+        self.stop()
 
     def req_stop(self):
         self.alive = False
@@ -223,71 +315,7 @@ class CaBotBLE:
     def stop(self):
         self.alive = False
         self.ready = False
+        self.ble_manager.on_terminate(self)
         self.device_status_char.stop()
         self.ros_status_char.stop()
         self.battery_status_char.stop()
-        self.check_queue_stop.set()
-        if self.target is not None:
-            try:
-                self.target.disconnect()
-            except:
-                common.logger.error(traceback.format_exc())
-
-
-class BLEDeviceManager(dgatt.DeviceManager, object):
-    def __init__(self, adapter_name, cabot_name=None, cabot_manager=None):
-        super().__init__(adapter_name = adapter_name)
-        self.cabot_name = "CaBot" + ("-" + cabot_name if cabot_name is not None else "")
-        self.cabot_manager=cabot_manager
-        common.logger.info("cabot_name: %s", self.cabot_name)
-        self.bles_lock = threading.Lock()
-        self.bles = {}
-
-    def handleSpeak(self, req, res):
-        common.logger.info("/speak request ble (%s)", str(req))
-        with self.bles_lock:
-            for ble in self.bles.values():
-                if ble.speak_char:
-                    ble.speak_char.handleSpeak(req=req)
-        res['result'] = True
-        return True
-
-    def handleEventCallback(self, msg, request_id):
-        with self.bles_lock:
-            for ble in self.bles.values():
-                if ble.event_char:
-                    ble.event_char.handleEventCallback(msg, request_id)
-
-    def on_terminate(self, bledev):
-        common.logger.info("terminate %s", bledev.target.path)
-        with self.bles_lock:
-            self.bles.pop(bledev.target.path)
-            if len(self.bles) == 0:
-                self.start_discovery(DISCOVERY_UUIDS)
-
-    #def make_device(self, mac_address):
-    #    return gatt.Device(mac_address=mac_address, manager=self)
-
-    def device_discovered(self, device):
-        if len(self.bles) == 0:
-            common.logger.debug("device {} {} discovered. bles.size={}".format(device.name, device.path, len(self.bles)))
-        with self.bles_lock:
-            if device.name == self.cabot_name:
-                if not device.path in self.bles.keys():
-                    common.logger.debug("device {} {} discovered".format(device.name, device.path))
-                    ble = CaBotBLE(device=device, ble_manager=self, cabot_manager=self.cabot_manager)
-                    self.bles[device.path] = ble
-                    ble.thread = threading.Thread(target=ble.start)
-                    ble.thread.start()
-                    self.stop_discovery()
-                else:
-                    #common.logger.info("device {} {} is already registered".format(device.alias, device.mac_address))
-                    pass
-
-    def stop(self):
-        super().stop()
-        with self.bles_lock:
-            bles = list(self.bles.values())
-            for ble in bles:
-                ble.req_stop()
-                ble.thread.join()
