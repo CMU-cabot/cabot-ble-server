@@ -50,6 +50,13 @@ RUN apt update && \
         apt clean && \
         rm -rf /var/lib/apt/lists/*
 
+RUN apt update && \
+        apt install -y --no-install-recommends \
+        kmod \
+        && \
+        apt clean && \
+        rm -rf /var/lib/apt/lists/*
+
 ## install for caboe_ble
 RUN apt update && \
     apt install -q -y --no-install-recommends \
