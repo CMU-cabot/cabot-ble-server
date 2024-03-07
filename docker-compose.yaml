@@ -13,6 +13,7 @@ services:
       - /run/udev:/run/udev:ro
       - /var/run/dbus:/var/run/dbus
       - /etc/bluetooth/:/etc/bluetooth
+      - /lib/modules:/lib/modules:ro
 # for systemctl
       - /run/systemd/system:/run/systemd/system
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
