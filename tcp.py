@@ -95,6 +95,11 @@ class CaBotTCP():
             def log_request(sid, data):
                 self.log_request_char.callback(0, data[0])
 
+            @self.sio.event
+            def share(sid, data):
+                common.logger.info(f"share {data[0]}")
+                self.sio.emit("share", data[0])
+
 
         self.version_char = common.VersionChar(self, "cabot_version")
 
