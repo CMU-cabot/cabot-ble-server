@@ -132,6 +132,7 @@ class CaBotManager(BatteryDriverDelegate):
         self._device_status = DeviceStatus()
         self._cabot_system_status = SystemStatus()
         self._battery_status = None
+        self._battery_status_last_publish = None
         self._log_report = LogReport()
         self.systemctl_lock = threading.Lock()
         self.start_flag = False
@@ -152,6 +153,10 @@ class CaBotManager(BatteryDriverDelegate):
     # BatteryDriverDelegate start
     def battery_status(self, status):
         self._battery_status = status
+        now = time.time()
+        if not self._battery_status_last_publish or now - self._battery_status_last_publish > 1.0:
+            common.battery_topic.publish(status.battery_state_msg)
+            self._battery_status_last_publish = now
         if status.shutdown or status.lowpower_shutdown:
             common.logger.info("shutdown requested")
             self.stop()

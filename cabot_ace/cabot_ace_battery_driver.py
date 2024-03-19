@@ -12,8 +12,7 @@ import struct
 import time
 import serial
 import argparse
-
-from cabot import util
+import roslibpy
 
 DEBUG=False
 
@@ -266,6 +265,20 @@ class BatteryStatus:
         for key in self.__dict__:
             temp += "{}: {}\n".format(key, self.__dict__[key])
         return temp.strip()
+
+    @property
+    def battery_state_msg(self):
+        now = roslibpy.Time.now()
+        return {
+            'header': {
+                'stamp': {
+                    'secs': now.secs,
+                    'nsecs': now.nsecs
+                }
+            },
+            "percentage": self.battery_capacity / 100.0,
+            "present": True,
+        }
 
     @property
     def json(self):

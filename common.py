@@ -67,6 +67,7 @@ diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/
 cabot_event_topic_sub = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 cabot_event_topic_pub = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 ble_hb_topic = roslibpy.Topic(client, '/cabot/ble_heart_beat', 'std_msgs/String')
+battery_topic = roslibpy.Topic(client, '/cabot/battery', 'sensor_msgs/BatteryState')
 activity_log_topic = roslibpy.Topic(client, '/cabot/activity_log', 'cabot_msgs/Log')
 speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
 
