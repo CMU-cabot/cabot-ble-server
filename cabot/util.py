@@ -35,7 +35,7 @@ import time
 
 # based on the following snipet
 # https://stackoverflow.com/questions/5179467/equivalent-of-setinterval-in-python
-def setInterval(interval, times=-1):
+def setInterval(interval, times=-1, logger=None):
     """
     interval: interval for calling decorated function in seconds
     times: how many times do you want to call the function < 0 means infinite
@@ -77,7 +77,10 @@ def setInterval(interval, times=-1):
                     try:
                         function(*args, **kwargs)
                     except:
-                        print(traceback.format_exc())
+                        if logger:
+                            logger.info(traceback.format_exc())
+                        else:
+                            print(traceback.format_exc())
                 stop.set()
 
             timer = threading.Timer(0, inner_wrap)
