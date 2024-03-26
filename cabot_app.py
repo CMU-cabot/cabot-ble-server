@@ -453,13 +453,16 @@ async def main():
         battery_thread_node = threading.Thread(target=battery_driver_node.start)
         battery_thread_node.start()
 
-    result = subprocess.call(["grep", "-E", "^ControllerMode *= *le$", "/etc/bluetooth/main.conf"])
-    if result != 0:
-        common.logger.error("Please check your /etc/bluetooth/main.conf")
-        line = subprocess.check_output(["grep", "-E", "ControllerMode", "/etc/bluetooth/main.conf"])
-        common.logger.error("Your ControllerMode is '{}'".format(line.decode('utf-8').replace('\n', '')))
-        common.logger.error("Please use ./setup_bluetooth_conf.sh to configure LE mode")
-        sys.exit(result)
+    try:
+        result = subprocess.call(["grep", "-E", "^ControllerMode *= *le$", "/etc/bluetooth/main.conf"])
+        if result != 0:
+            common.logger.error("Please check your /etc/bluetooth/main.conf")
+            line = subprocess.check_output(["grep", "-E", "ControllerMode", "/etc/bluetooth/main.conf"])
+            common.logger.error("Your ControllerMode is '{}'".format(line.decode('utf-8').replace('\n', '')))
+            common.logger.error("Please use ./setup_bluetooth_conf.sh to configure LE mode")
+            sys.exit(result)
+    except:
+        pass
 
     global tcp_server
     global ble_manager
