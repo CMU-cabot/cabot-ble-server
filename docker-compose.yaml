@@ -27,8 +27,8 @@ services:
 # for ssh in check_device_status.sh
       - ~/.ssh:/home/developer/.ssh
 # for log report
-      - /opt/report-submitter:/opt/report-submitter
-      - /opt/cabot/docker/home/.ros/log:/opt/cabot/docker/home/.ros/log
+#      - /opt/report-submitter:/opt/report-submitter
+#      - /opt/cabot/docker/home/.ros/log:/opt/cabot/docker/home/.ros/log
     environment:
       - CABOT_NAME
       - CABOT_BLE_ADAPTER
@@ -52,10 +52,12 @@ services:
       - MICRO_CONTROLLER
       - LANG
 # required for display, device, and systemctl
-    privileged: true
+    # privileged: true
 # device, bluetooth
-    devices:
-      - /dev/dri
+    #devices:
+    #  - /dev/dri
 # device, bluetooth
-    network_mode: host
+    # network_mode: host
+    ports:
+      - 0.0.0.0:5001:5000
     command: ./cabot_app.py
