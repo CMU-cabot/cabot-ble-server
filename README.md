@@ -4,6 +4,11 @@
 - Support only TCP transport
 - cabot-ios-app [CaBotAppModel.socketPort](https://github.com/CMU-cabot/cabot-ios-app/blob/86bd67beceae80a87f478a33993d7db622a3c443/CaBot/CaBotAppModel.swift#L401) should be 5001
 - Use `./launch.sh` to launch the server
+```
+git submodule update --init --recursive
+docker-compose build --build-arg UID=$UID
+./launch.sh
+```
 - `./install.sh` does not work on macos
 
 # CaBot BLE Server
