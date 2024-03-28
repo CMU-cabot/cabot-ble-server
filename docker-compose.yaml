@@ -25,7 +25,7 @@ services:
       - /usr/local/bin/docker-compose:/usr/local/bin/docker-compose
       - /var/run/docker.sock:/var/run/docker.sock
 # for ssh in check_device_status.sh
-      - ~/.ssh:/home/developer/.ssh
+#      - ~/.ssh:/home/developer/.ssh
 # for log report
 #      - /opt/report-submitter:/opt/report-submitter
 #      - /opt/cabot/docker/home/.ros/log:/opt/cabot/docker/home/.ros/log
