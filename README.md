@@ -1,6 +1,5 @@
-## For development on macos (will not be merged)
+# For development on macos (will not be merged)
 
-- Tested with Docker Desktop
 - Support only TCP transport
 - cabot-ios-app [CaBotAppModel.socketPort](https://github.com/CMU-cabot/cabot-ios-app/blob/86bd67beceae80a87f478a33993d7db622a3c443/CaBot/CaBotAppModel.swift#L401) should be 5001
 - Use `./launch.sh` to launch the server
@@ -10,6 +9,29 @@ docker-compose build --build-arg UID=$UID
 ./launch.sh
 ```
 - `./install.sh` does not work on macos
+
+## docker on macos
+- Tested with [Docker Desktop](https://www.docker.com/products/docker-desktop/) / macos14
+- Tested with [docker with colima installed by homebrew](https://dev.to/elliotalexander/how-to-use-docker-without-docker-desktop-on-macos-217m) / macos13, 14
+  - [docker-compose installed by homebrew](https://formulae.brew.sh/formula/docker-compose)
+
+### Trouble shooting
+- check if your PATH env includes `/opt/homebrew/bin:/opt/homebrew/sbin:` [ref](https://docs.brew.sh/FAQ#my-mac-apps-dont-find-homebrew-utilities)
+- check if your `~/.docker/config.json` is properly configured (you can check if the json is valid with web browsers)
+- example config.json
+  ```
+  {
+    "auths": {},
+    "credsStore": "osxkeychain",
+    "currentContext": "colima",
+    "cliPluginsExtraDirs": [
+      "/opt/homebrew/lib/docker/cli-plugins"
+    ]
+  }
+  ```
+- Has your colima started?
+  - `colima start` for manual start
+  - `brew services start colima` for automatic start on boot (takes a few minutes to be ready)
 
 # CaBot BLE Server
 
