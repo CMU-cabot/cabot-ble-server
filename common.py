@@ -28,6 +28,7 @@ import traceback
 import logging
 import subprocess
 from uuid import UUID
+from collections import deque
 
 import roslibpy
 from roslibpy.comm import RosBridgeClientFactory
@@ -66,6 +67,8 @@ if DEBUG:
 diagnostics_topic = roslibpy.Topic(client, "/diagnostics_agg", "diagnostic_msgs/DiagnosticArray")
 cabot_event_topic_sub = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
 cabot_event_topic_pub = roslibpy.Topic(client, '/cabot/event', 'std_msgs/String')
+cabot_touch_topic_sub = roslibpy.Topic(client, '/cabot/touch', 'std_msgs/Int16')
+message_buffer = deque(maxlen=10)
 ble_hb_topic = roslibpy.Topic(client, '/cabot/ble_heart_beat', 'std_msgs/String')
 activity_log_topic = roslibpy.Topic(client, '/cabot/activity_log', 'cabot_msgs/Log')
 speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
@@ -137,9 +140,13 @@ def cabot_event_callback(msg):
         handler.handleEventCallback(msg, request_id)
     activity_log("cabot/event", msg['data'])
 
+def cabot_touch_callback(msg):
+    message_buffer.append(msg.data)
+
 
 cabot_event_topic_sub.subscribe(cabot_event_callback)
 diagnostics_topic.subscribe(diagnostic_agg_callback)
+cabot_touch_topic_sub.subscribe(cabot_touch_callback)
 
 @util.setInterval(1.0)
 def polling_ros():
@@ -163,6 +170,22 @@ def polling_ros():
 
 polling_ros()
 
+@util.setInterval(0.2)
+def send_touch():
+    if message_buffer:
+        message = message_buffer.pop()
+    else:
+        massage = -1
+    
+    global event_handlers
+    if event_handlers.count == 0:
+        logger.error("There is no event_handler instance")
+
+    for handler in event_handlers:
+        handler.handleTouchCallback(massage)
+    activity_log("cabot/touch", massage)
+
+send_touch()
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -363,6 +386,18 @@ class EventChars(BLENotifyChar):
         }
         jsonText = json.dumps(req, separators=(',', ':'))
         self.send_text(self.navi_uuid, jsonText)
+
+class TouchChars(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, None) # uuid is not set because EventChars uses multiple uuids.
+        self.uuid = uuid
+
+    def handleTouchCallback(self, msg):
+        req = {
+            'touch': msg
+        }
+        jsonText = json.dumps(req, separators=(',', ':'))
+        self.send_text(self.uuid, jsonText)
 
 
 class CabotLogRequestChar(BLESubChar):

@@ -109,6 +109,7 @@ class CaBotTCP():
 
         self.speak_char = common.SpeakChar(self, "speak")
         self.event_char = common.EventChars(self, "navigate")
+        self.touch_char = common.TouchChars(self, "touch")
 
         self.handler = subchar_handler("/cabot")
         self.sio.register_namespace(self.handler)
@@ -134,6 +135,9 @@ class CaBotTCP():
 
     def handleEventCallback(self, msg, request_id):
         self.event_char.handleEventCallback(msg, request_id)
+
+    def handleTouchCallback(self, msg):
+        self.touch_char.handleTouchCallback(msg)
 
     def start(self):
         common.logger.info("CaBotTCP thread started")
