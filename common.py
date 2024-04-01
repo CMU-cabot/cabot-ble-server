@@ -141,7 +141,7 @@ def cabot_event_callback(msg):
     activity_log("cabot/event", msg['data'])
 
 def cabot_touch_callback(msg):
-    message_buffer.append(msg.data)
+    message_buffer.append(msg['data'])
 
 
 cabot_event_topic_sub.subscribe(cabot_event_callback)
@@ -175,15 +175,15 @@ def send_touch():
     if message_buffer:
         message = message_buffer.pop()
     else:
-        massage = -1
+        message = -1
     
     global event_handlers
     if event_handlers.count == 0:
         logger.error("There is no event_handler instance")
 
     for handler in event_handlers:
-        handler.handleTouchCallback(massage)
-    activity_log("cabot/touch", massage)
+        handler.handleTouchCallback(message)
+    activity_log("cabot/touch", message)
 
 send_touch()
 
@@ -377,11 +377,14 @@ class EventChars(BLENotifyChar):
         if event.type != NavigationEvent.TYPE:
             return
 
-        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage"]:
+        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage", "stop-reason"]:
             return
+        send_type = event.subtype
+        if event.subtype == "stop-reason" and event.param == "NO_NAVIGATION_WITH_TOUCH":
+            send_type = "pushbutton"
         req = {
             'request_id': request_id,
-            'type': event.subtype,
+            'type': send_type,
             'param': event.param if event.param else ""
         }
         jsonText = json.dumps(req, separators=(',', ':'))
