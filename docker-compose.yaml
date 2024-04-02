@@ -47,6 +47,7 @@ services:
       - CABOT_ID_FILE
       - CABOT_NO_BLE
       - CABOT_NO_TCP
+      - CABOT_ROSBRIDGE_HOST=cabot-macos-debug-tool-rosbridge-1
       - LIDAR_IF
       - LIDAR_IP
       - MICRO_CONTROLLER
@@ -58,6 +59,13 @@ services:
     #  - /dev/dri
 # device, bluetooth
     # network_mode: host
+    networks:
+      - ros2_network
     ports:
       - 0.0.0.0:5001:5000
     command: ./cabot_app.py
+
+networks:
+  ros2_network:
+    name: ros2_network
+    external: true

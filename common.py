@@ -39,13 +39,15 @@ from cabot_ace import BatteryDriverDelegate
 from cabot_log_report import LogReport
 
 CABOT_BLE_VERSION = "20230222"
+rosbridge_host = os.environ.get('CABOT_ROSBRIDGE_HOST', 'localhost')
+
 
 ble_manager = None
 
 # settings for roslibpy reconnection
 RosBridgeClientFactory.set_initial_delay(1)
 RosBridgeClientFactory.set_max_delay(3)
-client = roslibpy.Ros(host='localhost', port=9091)
+client = roslibpy.Ros(host=rosbridge_host, port=9091)
 ROS_CLIENT_CONNECTED = [False]
 DEBUG=False
 
