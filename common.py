@@ -397,7 +397,7 @@ class TouchChars(BLENotifyChar):
 
     def handleTouchCallback(self, msg):
         req = {
-            'touch': msg
+            'level': msg
         }
         jsonText = json.dumps(req, separators=(',', ':'))
         self.send_text(self.uuid, jsonText)
