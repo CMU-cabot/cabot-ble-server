@@ -183,7 +183,7 @@ def send_touch():
 
     for handler in event_handlers:
         handler.handleTouchCallback(message)
-    activity_log("cabot/touch", message)
+    activity_log("cabot/touch", str(message))
 
 send_touch()
 
@@ -377,14 +377,11 @@ class EventChars(BLENotifyChar):
         if event.type != NavigationEvent.TYPE:
             return
 
-        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage", "stop-reason"]:
+        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage"]:
             return
-        send_type = event.subtype
-        if event.subtype == "stop-reason" and event.param == "NO_NAVIGATION_WITH_TOUCH":
-            send_type = "pushbutton"
         req = {
             'request_id': request_id,
-            'type': send_type,
+            'type': event.subtype,
             'param': event.param if event.param else ""
         }
         jsonText = json.dumps(req, separators=(',', ':'))
