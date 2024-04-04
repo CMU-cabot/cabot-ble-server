@@ -183,7 +183,6 @@ def send_touch():
 
     for handler in event_handlers:
         handler.handleTouchCallback(message)
-    activity_log("cabot/touch", str(message))
 
 send_touch()
 
