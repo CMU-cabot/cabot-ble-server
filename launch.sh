@@ -5,7 +5,7 @@ stop_launch() {
     exit 0
 }
 
-trap 'stop_launch' SIGINT SIGTERM EXIT
+trap 'stop_launch' SIGINT SIGTERM
 
 pwd=`pwd`
 scriptdir=`dirname $0`
