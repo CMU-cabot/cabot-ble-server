@@ -161,7 +161,7 @@ class CaBotManager(BatteryDriverDelegate):
     def add_log_request(self, request, callback):
         self._log_report.add_to_queue(request, callback)
 
-    @util.setInterval(5)
+    @util.setInterval(5, logger=common.logger)
     def _run(self):
         self._run_once()
 
