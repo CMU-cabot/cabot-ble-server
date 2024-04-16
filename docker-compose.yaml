@@ -49,6 +49,7 @@ services:
       - CABOT_NO_TCP
       - LIDAR_IF
       - LIDAR_IP
+      - ARPSCAN_LIDAR
       - MICRO_CONTROLLER
       - LANG
 # required for display, device, and systemctl
