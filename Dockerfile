@@ -1,7 +1,7 @@
-FROM ubuntu:focal
+FROM ros:humble-ros-base
 
 ENV DEBIAN_FRONTEND="noninteractive" \
-    UBUNTU_DISTRO=focal
+    UBUNTU_DISTRO=jammy
 
 ## install for device_check_status.sh
 RUN apt update && \
