@@ -39,6 +39,7 @@ CABOT_ACE_BATTERY_BAUD=115200
 LIDAR_IF=enp8s0
 LIDAR_IP=192.168.2.201
 MICRO_CONTROLLER=Arduino
+ARPSCAN_LIDAR		# prefix lidar name(default is Velodyne).If you use Hesai Lidar, set this to Hesai.
 ```
 
 ### related to model variant
