@@ -16,7 +16,6 @@ RUN apt-key adv --keyserver keys.gnupg.net --recv-key F6E65AC044F831AC80A06380C8
 	add-apt-repository "deb https://librealsense.intel.com/Debian/apt-repo $UBUNTU_DISTRO main" -u
 RUN apt update && \
 	apt install -y --no-install-recommends \
-	arp-scan \
 	gettext \
 	librealsense2-utils \
 	network-manager \
@@ -41,6 +40,19 @@ RUN apt update && \
 RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
     sed -i -e 's/# ja_JP.UTF-8 UTF-8/ja_JP.UTF-8 UTF-8/' /etc/locale.gen && \
     locale-gen
+
+RUN apt update && apt install -y --no-install-recommends \
+    autoconf automake libtool tar wget make gcc libpcap-dev \
+    && apt clean && rm -rf /var/lib/apt/lists/*
+
+RUN wget https://github.com/royhills/arp-scan/archive/refs/tags/1.10.0.tar.gz && \
+    tar xvf 1.10.0.tar.gz && \
+    cd arp-scan-1.10.0 && \
+    autoreconf --install && \
+    ./configure && \
+    make && \
+    make install && \
+    cd .. && rm -rf arp-scan-1.10.0 1.10.0.tar.gz
 
 RUN apt update && \
         apt install -y --no-install-recommends \
