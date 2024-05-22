@@ -101,8 +101,10 @@ class LogReport:
                 items = log_name.split(",")
                 is_report_submitted = (items[1] == "1") if len(items) > 1 else False
                 is_uploaded_to_box = (items[2] == "1") if len(items) > 2 else False
+                nanoseconds = items[3] if len(items) > 3 else None
                 response["log_list"].append({
                     "name": items[0],
+                    "nanoseconds": nanoseconds,
                     "is_report_submitted": is_report_submitted,
                     "is_uploaded_to_box": is_uploaded_to_box
                     })
