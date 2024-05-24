@@ -168,7 +168,7 @@ def polling_ros():
     else:
         pass
 
-polling_ros()
+cancel = polling_ros()
 
 @util.setInterval(0.2)
 def send_touch():

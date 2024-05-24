@@ -136,7 +136,7 @@ class CaBotManager(BatteryDriverDelegate):
         self.systemctl_lock = threading.Lock()
         self.start_flag = False
         self.stop_run = None
-        self.check_interval = 1
+        self.check_interval = 5
         self.run_count = 0
         self._jetson_poweroff_commands = jetson_poweroff_commands
 
@@ -161,7 +161,7 @@ class CaBotManager(BatteryDriverDelegate):
     def add_log_request(self, request, callback):
         self._log_report.add_to_queue(request, callback)
 
-    @util.setInterval(5, logger=common.logger)
+    @util.setInterval(1, logger=common.logger)
     def _run(self):
         self._run_once()
 
@@ -261,18 +261,55 @@ class CaBotManager(BatteryDriverDelegate):
 quit_flag=False
 tcp_server = None
 ble_manager = None
+driver = None
+battery_thread = None
+tcp_server_thread = None
+
+def get_thread_traceback(thread_id):
+    frame = sys._current_frames().get(thread_id)
+    if frame:
+        return ''.join(traceback.format_stack(frame))
+    else:
+        return "Thread not found"
+
+import ctypes
+import threading
+
+def terminate_thread(thread):
+    if not thread.is_alive():
+        return
+    exc = ctypes.py_object(SystemExit)
+    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident), exc)
+    if res == 0:
+        raise ValueError("Invalid thread ID")
+    elif res > 1:
+        ctypes.pythonapi.PyThreadState_SetAsyncExc(thread.ident, 0)
+        raise SystemError("PyThreadState_SetAsyncExc failed")
 
 def sigint_handler(sig, frame):
     common.logger.info("sigint_handler")
     global quit_flag
-    global tcp_server
-    global ble_manager
     if sig == signal.SIGINT:
-        if ble_manager is not None:
-            ble_manager.stop()
-        quit_flag=True
-        if tcp_server is not None:
-            tcp_server.stop()
+        try:
+            quit_flag = True
+            if driver:
+                driver.stop()
+                battery_thread.join()
+            if ble_manager:
+                ble_manager.stop()
+            common.client.terminate()
+            common.cancel.set()
+
+            if tcp_server_thread:
+                try:
+                    terminate_thread(tcp_server_thread)
+                except:
+                    common.logger.error(traceback.format_exc())
+                while tcp_server_thread.is_alive():
+                    common.logger.info(f"wait tcp server thread {tcp_server_thread}")
+                    tcp_server_thread.join(timeout=1)
+        except:
+            common.logger.error(traceback.format_exc())
     else:
         common.logger.error("Unexpected signal")
 
@@ -325,7 +362,8 @@ async def main():
     cabot_manager = CaBotManager(jetson_poweroff_commands=jetson_poweroff_commands)
     cabot_manager.run(start=start_at_launch)
 
-    driver = None
+    global driver
+    global battery_thread
     if port_name is not None and baud is not None:
         driver = BatteryDriver(port_name, baud, delegate=cabot_manager)
         battery_driver_node = BatteryDriverNode(common.client, driver)
@@ -354,7 +392,7 @@ async def main():
 
     common.speak_service.advertise(handleSpeak)
 
-    tcp_server_thread = None
+    global tcp_server_thread
     try:
         if not no_tcp:
             if tcp_server is None:
@@ -379,19 +417,9 @@ async def main():
         common.logger.info("keyboard interrupt")
     except:
         common.logger.info(traceback.format_exc())
-    finally:
-        try:
-            if driver:
-                driver.stop()
-                battery_thread.join()
-            if tcp_server:
-                tcp_server.stop()
-                if tcp_server_thread:
-                    tcp_server_thread.join()
-            ble_manager.stop()
-            common.client.terminate()
-        except:
-            common.logger.info(traceback.format_exc())
+    cabot_manager.stop()
+    common.logger.info("exiting the app")
+    sys.exit(0)
 
 if __name__ == "__main__":
     asyncio.run(main())
