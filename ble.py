@@ -161,6 +161,12 @@ class BLEDeviceManager:
                 if ble.event_char:
                     ble.event_char.handleEventCallback(msg, request_id)
 
+    def handleTouchCallback(self, msg):
+        with self.bles_lock:
+            for ble in self.bles.values():
+                if ble.touch_char:
+                    ble.touch_char.handleTouchCallback(msg)
+
 
 def CABOT_BLE_UUID(_id):
     return UUID("35CE{0:04X}-5E89-4C0D-A3F6-8A6A507C1BF1".format(_id))
@@ -190,6 +196,7 @@ class CaBotBLE:
 
         self.speak_char = common.SpeakChar(self, CABOT_BLE_UUID(0x30))
         self.event_char = common.EventChars(self, CABOT_BLE_UUID(0x40))
+        self.touch_char = common.TouchChars(self, CABOT_BLE_UUID(0x41))
 
         self.chars.append(common.CabotLogRequestChar(self, CABOT_BLE_UUID(0x50),
                                                      self.cabot_manager,
