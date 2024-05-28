@@ -126,6 +126,7 @@ class BLEDeviceManager:
                 self.alive = False
                 continue
             running_tasks.update(self.get_tasks())
+        common.logger.info("BLEDeviceManager.run completed")
 
     def stop(self):
         self.alive = False
