@@ -72,6 +72,7 @@ message_buffer = deque(maxlen=10)
 ble_hb_topic = roslibpy.Topic(client, '/cabot/ble_heart_beat', 'std_msgs/String')
 activity_log_topic = roslibpy.Topic(client, '/cabot/activity_log', 'cabot_msgs/Log')
 speak_service = roslibpy.Service(client, '/speak', 'cabot_msgs/Speak')
+restart_localization_service = roslibpy.Service(client, '/restart_localization', 'mf_localization_msgs/RestartLocalization')
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -246,6 +247,12 @@ class CabotManageChar(BLESubChar):
             lang = value[5:]
             event = NavigationEvent(subtype="language", param=lang)
             cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
+        if value.startswith("restart_localization"):
+            def callback(response):
+                logger.info(f"Localization restart: {response=}")
+            request = roslibpy.ServiceRequest({})
+            restart_localization_service.call(request, callback)
+
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
