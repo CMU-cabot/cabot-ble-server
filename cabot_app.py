@@ -297,8 +297,8 @@ def sigint_handler(sig, frame):
                 battery_thread.join()
             if ble_manager:
                 ble_manager.stop()
-            common.client.terminate()
-            common.cancel.set()
+#            common.client.terminate()
+#            common.cancel.set()
 
             if tcp_server_thread:
                 try:
@@ -382,15 +382,15 @@ async def main():
     global ble_manager
     global quit_flag
 
-    def handleSpeak(req, res):
-        req['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
-        if ble_manager:
-            ble_manager.handleSpeak(req, res)
-        if tcp_server:
-            tcp_server.handleSpeak(req, res)
-        return True
+#    def handleSpeak(req, res):
+#        req['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
+#        if ble_manager:
+#            ble_manager.handleSpeak(req, res)
+#        if tcp_server:
+#            tcp_server.handleSpeak(req, res)
+#        return True
 
-    common.speak_service.advertise(handleSpeak)
+#    common.speak_service.advertise(handleSpeak)
 
     global tcp_server_thread
     try:

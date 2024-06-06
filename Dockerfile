@@ -11,7 +11,7 @@ RUN apt update && \
 	&& \
 	apt clean && \
 	rm -rf /var/lib/apt/lists/*
-RUN apt-key adv --keyserver keys.gnupg.net --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || \
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || \
 	apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE && \
 	add-apt-repository "deb https://librealsense.intel.com/Debian/apt-repo $UBUNTU_DISTRO main" -u
 RUN apt update && \
@@ -84,6 +84,7 @@ RUN apt update && \
 	sudo \
 	systemd \
 	wireless-tools \
+	ros-humble-rmw-cyclonedds-cpp \
 	&& \
 	apt clean && \
 	rm -rf /var/lib/apt/lists/*
@@ -112,6 +113,7 @@ WORKDIR $HOME
 COPY cabot $HOME/cabot
 COPY cabot_ui $HOME/cabot_ui
 COPY cabot_ace $HOME/cabot_ace
+COPY cabot-common/cabot_msgs $HOME/cabot_msgs
 COPY cabot_app.py $HOME/cabot_app.py
 COPY cabot_log_report.py $HOME/cabot_log_report.py
 COPY common.py $HOME/common.py

@@ -72,13 +72,13 @@ class CaBotNode(Node):
     def __init__(self):
         super().__init__('cabot_node')
         
-        diagnostics_sub = create_subscription(DiagnosticArray, "/diagnostics_agg", diagnostic_agg_callback)
-        cabot_event_sub = create_subscription(String, '/cabot/event', cabot_event_callback)
-        cabot_event_pub = create_publisher(String, '/cabot/event', 10)
-        cabot_touch_sub = create_subscription(Int16, '/cabot/touch', cabot_touch_callback)
-        ble_hb_pub = create_publisher(String, '/cabot/ble_heart_beat', 10)
-        activity_log_pub = create_publisher(Log, '/cabot/activity_log', 10)
-        speak_service = create_service(Speak, '/speak')
+        self.diagnostics_sub = create_subscription(DiagnosticArray, "/diagnostics_agg", diagnostic_agg_callback)
+        self.cabot_event_sub = create_subscription(String, '/cabot/event', cabot_event_callback)
+        self.cabot_event_pub = create_publisher(String, '/cabot/event', 10)
+        self.cabot_touch_sub = create_subscription(Int16, '/cabot/touch', cabot_touch_callback)
+        self.ble_hb_pub = create_publisher(String, '/cabot/ble_heart_beat', 10)
+        self.activity_log_pub = create_publisher(Log, '/cabot/activity_log', 10)
+        self.speak_service = create_service(Speak, '/speak')
         message_buffer = deque(maxlen=10)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -234,8 +234,8 @@ class CabotLogChar(BLESubChar):
 
 
 class CabotManageChar(BLESubChar):
-    def __init__(self, owner, uuid, manager, cabot_node):
-        super().__init__(owner, uuid, manager,cabot_node)
+    def __init__(self, owner, uuid, manager, CaBotNode):
+        super().__init__(owner, uuid, CaBotNode)
         self.manager = manager
 
     def callback(self, handle, value):
@@ -253,7 +253,7 @@ class CabotManageChar(BLESubChar):
             event = NavigationEvent(subtype="language", param=lang)
             msg = String()
             msg.data = str(event)
-            cabot_node.cabot_event_pub.publish(msg)
+            self.cabot_event_pub.publish(msg)
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
