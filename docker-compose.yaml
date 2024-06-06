@@ -47,7 +47,7 @@ services:
       - CABOT_ID_FILE
       - CABOT_NO_BLE
       - CABOT_NO_TCP
-      - CABOT_ROSBRIDGE_HOST=cabot-macos-debug-tool-rosbridge-1
+      - CABOT_ROSBRIDGE_HOST=${CABOT_ROSBRIDGE_HOST:-rosbridge}
       - LIDAR_IF
       - LIDAR_IP
       - MICRO_CONTROLLER
