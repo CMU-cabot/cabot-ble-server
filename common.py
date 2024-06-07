@@ -253,7 +253,7 @@ class CabotManageChar(BLESubChar):
             event = NavigationEvent(subtype="language", param=lang)
             msg = String()
             msg.data = str(event)
-            self.cabot_event_pub.publish(msg)
+            self.CaBotNode.cabot_event_pub.publish(msg)
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)

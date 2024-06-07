@@ -4,6 +4,3 @@
 [submodule "cabot-common"]
         path = cabot-common
         url = git@github.com:cmu-cabot/cabot-common.git
-[submodule "report-submitter"]
-        path = report-submitter
-        url = git@github.com:cmu-cabot/report-submitter.git

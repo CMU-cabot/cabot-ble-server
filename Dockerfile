@@ -123,4 +123,6 @@ COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale
 
+RUN . /opt/ros/humble/setup.sh && colcon build
+
 ENTRYPOINT [ "/entrypoint.sh" ]
