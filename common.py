@@ -168,7 +168,6 @@ def cabot_event_callback(msg):
 def cabot_touch_callback(msg):
     message_buffer.append(msg.data)
 
-
 message_buffer = None
 
 @util.setInterval(0.2)
@@ -252,7 +251,7 @@ class CabotManageChar(BLESubChar):
             node_pub.cabot_pub_event(msg)
 #       if value.startswith("restart_localization"):
 #           def callback(response):
-#           logger.info(f"Localization restart: {response=}")
+#               logger.info(f"Localization restart: {response=}")
 #           request = roslibpy.ServiceRequest({})
 #           restart_localization_service.call(request, callback)
 
@@ -524,6 +523,8 @@ def main (args=None):
     
     try:
         node.cabot_pub_event(msg)
+        node.cabot_ble_hb_pub(msg)
+        node.cabot_activity_log_pub(log_msg)
     except:
         pass
     finally:
