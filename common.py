@@ -31,7 +31,12 @@ from uuid import UUID
 from collections import deque
 
 import rclpy
+from rclpy.clock import Clock, ClockType
+from rclpy.time import Time
+
 from rclpy.node import Node
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.executors import MultiThreadedExecutor
 from cabot_msgs.srv import Speak
 from cabot_msgs.msg import Log
 from std_msgs.msg import String, Int16
@@ -49,6 +54,7 @@ ble_manager = None
 
 # settings for roslibpy reconnection
 rclpy.init()
+
 ROS_CLIENT_CONNECTED = [False]
 DEBUG=False
 
@@ -68,39 +74,49 @@ if DEBUG:
 
 
 
-class CaBotNode(Node):
+class CaBotNode_Pub(Node):
     def __init__(self):
-        super().__init__('cabot_node')
-        
-        self.diagnostics_sub = create_subscription(DiagnosticArray, "/diagnostics_agg", diagnostic_agg_callback)
-        self.cabot_event_sub = create_subscription(String, '/cabot/event', cabot_event_callback)
-        self.cabot_event_pub = create_publisher(String, '/cabot/event', 10)
-        self.cabot_touch_sub = create_subscription(Int16, '/cabot/touch', cabot_touch_callback)
-        self.ble_hb_pub = create_publisher(String, '/cabot/ble_heart_beat', 10)
-        self.activity_log_pub = create_publisher(Log, '/cabot/activity_log', 10)
-        self.speak_service = create_service(Speak, '/speak')
-        message_buffer = deque(maxlen=10)
+        super().__init__('cabot_node_pub')
+    
+        self.cabot_event_pub = self.create_publisher(String, '/cabot/event', 5)
+        self.ble_hb_pub = self.create_publisher(String, '/cabot/ble_heart_beat', 5)
+        self.activity_log_pub = self.create_publisher(Log, '/cabot/activity_log', 5)
+    def cabot_pub_event(self, msg):
+        self.cabot_event_pub.publish(msg)
+    def cabot_ble_hb_pub(self, msg):
+        self.ble_hb_pub.publish(msg)
+    def cabot_activity_log_pub(self, log_msg):
+        self.activity_log_pub.publish(log_msg)
+
+#class CaBotNode_Sub(Node):
+#    def __init__(self):
+#        super().__init__('cabot_node_sub')
+    
+#        self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", diagnostic_agg_callback)
+#        self.cabot_event_sub = self.create_subscription(String, '/cabot/event', cabot_event_callback)
+#        self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', cabot_touch_callback)
+#        self.speak_service = self.create_service(Speak, '/speak')
+#        self.restart_localization_service = self.create_service(mf_localization_msgs/RestartLocalization, '/restart_localization')
+
+message_buffer = deque(maxlen=10)
+
+node_pub = CaBotNode_Pub()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 
 def activity_log(category="", text="", memo=""):
-    now = get_clock().now()
+    now = Clock(clock_type=ClockType.ROS_TIME).now()
     logger.info("category={}, text={}, memo={}".format(category, text, memo))
     try:
-    
-        activity_log_pub(Log({
-            'header': {
-                'stamp': {
-                    'secs': now.secs,
-                    'nsecs': now.nsecs
-                }
-            },
-            'category': category,
-            'text': text,
-            'memo': memo
-        }))
+        log_msg = Log()
+        log_msg.header.stamp = Time(seconds=now.seconds_nanoseconds()[0], nanoseconds=now.seconds_nanoseconds()[1]).to_msg()
+        log_msg.category = category
+        log_msg.text = text
+        log_msg.memo = memo
+
+        node_pub.cabot_activity_log_pub(log_msg)
     except:
         logger.info(traceback.format_exc())
 
@@ -146,33 +162,12 @@ def cabot_event_callback(msg):
 
     request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
     for handler in event_handlers:
-        handler.handleEventCallback(msg.data, request_id)
+        handler.handleEventCallback(msg, request_id)
     activity_log("cabot/event", msg.data)
 
 def cabot_touch_callback(msg):
     message_buffer.append(msg.data)
 
-#client = []
-#@util.setInterval(1.0)
-#def polling_ros():
-#    global client
-#    if not client.is_connected:
-#        if ROS_CLIENT_CONNECTED[0]:
-#            logger.info("ROS bridge has been disconnected")
-#            ROS_CLIENT_CONNECTED[0] = False
-#            return
-#
-#        logger.debug("polling")
-#        try:
-#            logger.info("ROS bridge is connected")
-#            ROS_CLIENT_CONNECTED[0] = True
-#        except Exception as e:
-#            # except Failed to connect to ROS
-#            pass
-#    else:
-#        pass
-
-#cancel = polling_ros()
 
 message_buffer = None
 
@@ -191,6 +186,7 @@ def send_touch():
         handler.handleTouchCallback(message)
 
 send_touch()
+
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -234,8 +230,8 @@ class CabotLogChar(BLESubChar):
 
 
 class CabotManageChar(BLESubChar):
-    def __init__(self, owner, uuid, manager, CaBotNode):
-        super().__init__(owner, uuid, CaBotNode)
+    def __init__(self, owner, uuid, manager):
+        super().__init__(owner, uuid)
         self.manager = manager
 
     def callback(self, handle, value):
@@ -253,7 +249,12 @@ class CabotManageChar(BLESubChar):
             event = NavigationEvent(subtype="language", param=lang)
             msg = String()
             msg.data = str(event)
-            self.CaBotNode.cabot_event_pub.publish(msg)
+            node_pub.cabot_pub_event(msg)
+#       if value.startswith("restart_localization"):
+#           def callback(response):
+#           logger.info(f"Localization restart: {response=}")
+#           request = roslibpy.ServiceRequest({})
+#           restart_localization_service.call(request, callback)
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
@@ -270,12 +271,16 @@ class DestinationChar(BLESubChar):
         if value == "__cancel__":
             logger.info("cancel navigation")
             event = NavigationEvent(subtype="cancel", param=None)
-            cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
+            msg = String()
+            msg.data = str(event)
+            node_pub.cabot_pub_event(msg)
             return
 
         logger.info("destination: %s", value)
         event = NavigationEvent(subtype="destination", param=value)
-        cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
+        msg = String()
+        msg.data = str(event)
+        node_pub.cabot_pub_event(msg)
 
 
 class SummonsChar(BLESubChar):
@@ -286,7 +291,9 @@ class SummonsChar(BLESubChar):
         value = value.decode("utf-8")
         logger.info("summons_callback %s", value)
         event = NavigationEvent(subtype="summons", param=value)
-        cabot_event_topic_pub.publish(roslibpy.Message({'data': str(event)}))
+        msg = String()
+        msg.data = str(event)
+        node_pub.cabot_pub_event(msg)
 
 
 class HeartbeatChar(BLESubChar):
@@ -296,7 +303,9 @@ class HeartbeatChar(BLESubChar):
     def callback(self, handle, value):
         value = value.decode("utf-8")
         logger.info("heartbeat(%s):%s", self.owner.address, value)
-        ble_hb_topic.publish(roslibpy.Message({'data': value}))
+        msg = String()
+        msg.data = value
+        node_pub.cabot_ble_hb_pub(msg)
         self.owner.last_heartbeat = time.time()
 
 
@@ -507,3 +516,19 @@ class SystemStatus:
             'level': self.level,
             'diagnostics': self.diagnostics
         }
+     
+def main (args=None):
+    rclpy.init(args=args)
+    
+    node = CaBotNode_Pub()
+    
+    try:
+        node.cabot_pub_event(msg)
+    except:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+        
+if __name__ =='__main__':
+    main()

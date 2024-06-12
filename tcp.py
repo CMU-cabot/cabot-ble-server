@@ -53,8 +53,7 @@ class CaBotTCP():
         self.app = Flask(__name__)
         self.address = "tcp"
         self.cabot_manager = cabot_manager
-        cabot_node = ...
-        self.manage_cabot_char = common.CabotManageChar(self, "manage_cabot", cabot_manager, cabot_node)
+        self.manage_cabot_char = common.CabotManageChar(self, "manage_cabot", cabot_manager)
         self.log_request_char = common.CabotLogRequestChar(self, "log_request",
                                                             cabot_manager, 
                                                             common.CabotLogResponseChar(self, "log_response"))
