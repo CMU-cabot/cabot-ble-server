@@ -3,7 +3,7 @@
 - Support only TCP transport
 - Disable AirPlay Receiver
   - You can disable it in the System Setting  
-  <img width=50% alt="スクリーンショット 2024-06-12 10 07 22" src="https://github.com/CMU-cabot/cabot-ble-server/assets/141628678/ffbf2602-9233-47f3-878e-5a6d6f7ce1d5">
+    <img width=50% alt="スクリーンショット 2024-06-12 10 07 22" src="https://github.com/CMU-cabot/cabot-ble-server/assets/141628678/ffbf2602-9233-47f3-878e-5a6d6f7ce1d5">
   - If you want to enable AirPlay Receiver, you should set 
     - cabot-ios-app [CaBotAppModel.socketPort](https://github.com/CMU-cabot/cabot-ios-app/blob/86bd67beceae80a87f478a33993d7db622a3c443/CaBot/CaBotAppModel.swift#L401) as `5001`
     - [ports in docker-compose.yaml](https://github.com/CMU-cabot/cabot-ble-server/blob/94432bbd813177f1cf5554a150c2c4fd4a1fba90/docker-compose.yaml#L65) as `0.0.0.0:5001:5000`
