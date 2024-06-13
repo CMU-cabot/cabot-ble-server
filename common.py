@@ -88,16 +88,6 @@ class CaBotNode_Pub(Node):
     def cabot_activity_log_pub(self, log_msg):
         self.activity_log_pub.publish(log_msg)
 
-#class CaBotNode_Sub(Node):
-#    def __init__(self):
-#        super().__init__('cabot_node_sub')
-    
-#        self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", diagnostic_agg_callback)
-#        self.cabot_event_sub = self.create_subscription(String, '/cabot/event', cabot_event_callback)
-#        self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', cabot_touch_callback)
-#        self.speak_service = self.create_service(Speak, '/speak')
-#        self.restart_localization_service = self.create_service(mf_localization_msgs/RestartLocalization, '/restart_localization')
-
 message_buffer = deque(maxlen=10)
 
 node_pub = CaBotNode_Pub()
@@ -121,24 +111,26 @@ def activity_log(category="", text="", memo=""):
         logger.info(traceback.format_exc())
 
 
+
 diagnostics = []
-def diagnostic_agg_callback(msg):
-    global diagnostics
-    diagnostics = msg.status
-    for diagnostic in diagnostics:
-        # reduce floating number digits
-        for i in range(len(diagnostic.values)-1, -1, -1):
-            value = diagnostic.values[i]
-            if value['key'] == 'Minimum acceptable frequency (Hz)' or \
-               value['key'] == 'Maximum acceptable frequency (Hz)' or \
-               value['key'] == 'Events in window' or \
-               value['key'] == 'Events since startup':
-                diagnostic['values'].pop(i)
-                continue
-            try:
-                value.value = "%.2f"%(float(value.value))
-            except:
-                pass
+#def diagnostic_agg_callback(msg):
+#    global diagnostics
+#    diagnostics = msg.status
+#    for diagnostic in diagnostics:
+#        # reduce floating number digits
+#        for i in range(len(diagnostic.values)-1, -1, -1):
+#            value = diagnostic.values[i]
+#            if value['key'] == 'Minimum acceptable frequency (Hz)' or \
+#               value['key'] == 'Maximum acceptable frequency (Hz)' or \
+#               value['key'] == 'Events in window' or \
+#               value['key'] == 'Events since startup':
+#                diagnostic['values'].pop(i)
+#                continue
+#            try:
+#                value.value = "%.2f"%(float(value.value))
+#            except:
+#                pass
+
 
 event_handlers = []
 def add_event_handler(handler):
@@ -154,29 +146,63 @@ def clear_event_handler():
     global event_handlers
     event_handlers.clear()
 
-def cabot_event_callback(msg):
-    logger.info("cabot_event_callback is called")
-    global event_handlers
-    if event_handlers.count == 0:
-        logger.error("There is no event_handler instance")
+#def cabot_event_callback(msg):
+#    logger.info("cabot_event_callback is called")
+#    global event_handlers
+#    if event_handlers.count == 0:
+#        logger.error("There is no event_handler instance")
 
-    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
-    for handler in event_handlers:
-        handler.handleEventCallback(msg, request_id)
-    activity_log("cabot/event", msg.data)
+#    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+#    for handler in event_handlers:
+#        handler.handleEventCallback(msg, request_id)
+#    activity_log("cabot/event", msg.data)
 
-def cabot_touch_callback(msg):
-    message_buffer.append(msg.data)
+#def cabot_touch_callback(msg):
+#    message_buffer.append(msg.data)
 
-#class CaBotNode_Sub(Node):
-#    def __init__(self):
-#        super().__init__('cabot_node_sub')
+class CaBotNode_Sub(Node):
+    def __init__(self):
+        super().__init__('cabot_node_sub')
     
-#        self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", diagnostic_agg_callback)
-#        self.cabot_event_sub = self.create_subscription(String, '/cabot/event', cabot_event_callback)
-#        self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', cabot_touch_callback)
+        self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", self.diagnostic_agg_callback, 10)
+        self.cabot_event_sub = self.create_subscription(String, '/cabot/event', self.cabot_event_callback, 10)
+        self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', self.cabot_touch_callback, 10)
 #        self.speak_service = self.create_service(Speak, '/speak')
 #        self.restart_localization_service = self.create_service(mf_localization_msgs/RestartLocalization, '/restart_localization')
+
+    def diagnostic_agg_callback(self, msg):
+        global diagnostics
+        diagnostics = msg['status']
+        for diagnostic in diagnostics:
+            # reduce floating number digits
+            for i in range(len(diagnostic.values)-1, -1, -1):
+                value = diagnostic.values[i]
+                if value['key'] == 'Minimum acceptable frequency (Hz)' or \
+                   value['key'] == 'Maximum acceptable frequency (Hz)' or \
+                   value['key'] == 'Events in window' or \
+                   value['key'] == 'Events since startup':
+                    diagnostic['values'].pop(i)
+                    continue
+                try:
+                    value.value = "%.2f"%(float(value.value))
+                except:
+                    pass
+                    
+    def cabot_event_callback(self, msg):
+        logger.info("cabot_event_callback is called")
+        global event_handlers
+        if event_handlers.count == 0:
+            logger.error("There is no event_handler instance")
+
+        request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        for handler in event_handlers:
+            handler.handleEventCallback(msg, request_id)
+        activity_log("cabot/event", msg.data)
+
+    def cabot_touch_callback(self, msg):
+        self.message_buffer.append(msg.data)
+
+node1 = CaBotNode_Sub()
 
 @util.setInterval(0.2)
 def send_touch():
@@ -528,16 +554,23 @@ def main (args=None):
     rclpy.init(args=args)
     
     node = CaBotNode_Pub()
+    node1 = CaBotNode_Sub()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    executor.add_node(node1)
     
     try:
-        node.cabot_pub_event(msg)
-        node.cabot_ble_hb_pub(msg)
-        node.cabot_activity_log_pub(log_msg)
+        executor.spin()
+#        node.cabot_pub_event(msg)
+#        node.cabot_ble_hb_pub(msg)
+#        node.cabot_activity_log_pub(log_msg)
     except:
         pass
     finally:
         node.destroy_node()
+        node1.destroy_node()
         rclpy.shutdown()
+
         
 if __name__ =='__main__':
     main()
