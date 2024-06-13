@@ -168,7 +168,15 @@ def cabot_event_callback(msg):
 def cabot_touch_callback(msg):
     message_buffer.append(msg.data)
 
-message_buffer = None
+#class CaBotNode_Sub(Node):
+#    def __init__(self):
+#        super().__init__('cabot_node_sub')
+    
+#        self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", diagnostic_agg_callback)
+#        self.cabot_event_sub = self.create_subscription(String, '/cabot/event', cabot_event_callback)
+#        self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', cabot_touch_callback)
+#        self.speak_service = self.create_service(Speak, '/speak')
+#        self.restart_localization_service = self.create_service(mf_localization_msgs/RestartLocalization, '/restart_localization')
 
 @util.setInterval(0.2)
 def send_touch():
