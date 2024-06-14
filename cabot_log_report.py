@@ -69,6 +69,12 @@ class LogReport:
         result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
         return result.split()
 
+    def submitReport(self):
+        command = ["systemctl", "--user", "start", "submit_report"]
+        result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
+        return result
+        # return result
+
     def getReport(self, name):
         command = ["sudo", "-E", "/opt/report-submitter/get_report.sh", name]
         result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
@@ -124,6 +130,7 @@ class LogReport:
             detail = request["detail"]
             name = request["log_name"]
             self.makeReport(title, detail, name)
+            self.submitReport()
 
         callback(response)
 
