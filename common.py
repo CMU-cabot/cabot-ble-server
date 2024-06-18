@@ -110,28 +110,7 @@ def activity_log(category="", text="", memo=""):
     except:
         logger.info(traceback.format_exc())
 
-
-
 diagnostics = []
-#def diagnostic_agg_callback(msg):
-#    global diagnostics
-#    diagnostics = msg.status
-#    for diagnostic in diagnostics:
-#        # reduce floating number digits
-#        for i in range(len(diagnostic.values)-1, -1, -1):
-#            value = diagnostic.values[i]
-#            if value['key'] == 'Minimum acceptable frequency (Hz)' or \
-#               value['key'] == 'Maximum acceptable frequency (Hz)' or \
-#               value['key'] == 'Events in window' or \
-#               value['key'] == 'Events since startup':
-#                diagnostic['values'].pop(i)
-#                continue
-#            try:
-#                value.value = "%.2f"%(float(value.value))
-#            except:
-#                pass
-
-
 event_handlers = []
 def add_event_handler(handler):
     global event_handlers
@@ -145,20 +124,6 @@ def remove_event_handler(handler):
 def clear_event_handler():
     global event_handlers
     event_handlers.clear()
-
-#def cabot_event_callback(msg):
-#    logger.info("cabot_event_callback is called")
-#    global event_handlers
-#    if event_handlers.count == 0:
-#        logger.error("There is no event_handler instance")
-
-#    request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
-#    for handler in event_handlers:
-#        handler.handleEventCallback(msg, request_id)
-#    activity_log("cabot/event", msg.data)
-
-#def cabot_touch_callback(msg):
-#    message_buffer.append(msg.data)
 
 class CaBotNode_Sub(Node):
     def __init__(self):
@@ -553,7 +518,7 @@ class SystemStatus:
 
 #def main (args=None):
 
-executor = MultiThreadedExecutor()
+executor = [MultiThreadedExecutor(), MultiThreadedExecutor()]
     
 def run_thread(node_pub, node1, executor):
     def _run_thread():
