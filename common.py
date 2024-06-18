@@ -550,27 +550,27 @@ class SystemStatus:
             'diagnostics': self.diagnostics
         }
      
-def main (args=None):
-    rclpy.init(args=args)
+
+#def main (args=None):
+
+executor = MultiThreadedExecutor()
     
-    node = CaBotNode_Pub()
-    node1 = CaBotNode_Sub()
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
-    executor.add_node(node1)
-    
-    try:
-        executor.spin()
-#        node.cabot_pub_event(msg)
-#        node.cabot_ble_hb_pub(msg)
-#        node.cabot_activity_log_pub(log_msg)
-    except:
-        pass
-    finally:
-        node.destroy_node()
+def run_thread(node_pub, node1, executor):
+    def _run_thread():
+        executor.add_node(node_pub)
+        executor.add_node(node1)
+        try:
+            while rclpy.ok():
+#            node.cabot_pub_event(msg)
+#            node.cabot_ble_hb_pub(msg)
+#            node.cabot_activity_log_pub(log_msg)
+                executor.spin_once()
+        except:
+            pass
+        node_pub.destroy_node()
         node1.destroy_node()
         rclpy.shutdown()
-
-        
-if __name__ =='__main__':
-    main()
+    return _run_thread
+            
+thread = threading.Thread(target=run_thread(node_pub, node1, executor))
+thread.start()
