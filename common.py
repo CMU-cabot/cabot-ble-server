@@ -125,6 +125,7 @@ def clear_event_handler():
     global event_handlers
     event_handlers.clear()
 
+
 class CaBotNode_Sub(Node):
     def __init__(self):
         super().__init__('cabot_node_sub')
@@ -137,7 +138,7 @@ class CaBotNode_Sub(Node):
 
     def diagnostic_agg_callback(self, msg):
         global diagnostics
-        diagnostics = msg['status']
+        diagnostics = msg.status
         for diagnostic in diagnostics:
             # reduce floating number digits
             for i in range(len(diagnostic.values)-1, -1, -1):
@@ -165,7 +166,7 @@ class CaBotNode_Sub(Node):
         activity_log("cabot/event", msg.data)
 
     def cabot_touch_callback(self, msg):
-        self.message_buffer.append(msg.data)
+        message_buffer.append(msg.data)
 
 node1 = CaBotNode_Sub()
 
@@ -383,7 +384,7 @@ class EventChars(BLENotifyChar):
         self.navi_uuid = navi_uuid
 
     def handleEventCallback(self, msg, request_id):
-        event = BaseEvent.parse(msg['data'])
+        event = BaseEvent.parse(msg.data)
         if event is None:
             logger.error("cabot event %s cannot be parsed", msg['data'])
             return
@@ -515,10 +516,7 @@ class SystemStatus:
             'diagnostics': self.diagnostics
         }
      
-
-#def main (args=None):
-
-executor = [MultiThreadedExecutor(), MultiThreadedExecutor()]
+executor = MultiThreadedExecutor()
     
 def run_thread(node_pub, node1, executor):
     def _run_thread():
@@ -526,12 +524,10 @@ def run_thread(node_pub, node1, executor):
         executor.add_node(node1)
         try:
             while rclpy.ok():
-#            node.cabot_pub_event(msg)
-#            node.cabot_ble_hb_pub(msg)
-#            node.cabot_activity_log_pub(log_msg)
                 executor.spin_once()
         except:
             pass
+#            logger.error(traceback.format_exc())
         node_pub.destroy_node()
         node1.destroy_node()
         rclpy.shutdown()
