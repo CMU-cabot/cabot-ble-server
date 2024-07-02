@@ -85,6 +85,7 @@ RUN apt update && \
 	systemd \
 	wireless-tools \
 	ros-humble-rmw-cyclonedds-cpp \
+	ros-humble-diagnostic-updater \
 	&& \
 	apt clean && \
 	rm -rf /var/lib/apt/lists/*
@@ -113,7 +114,6 @@ WORKDIR $HOME
 COPY cabot $HOME/cabot
 COPY cabot_ui $HOME/cabot_ui
 COPY cabot_ace $HOME/cabot_ace
-COPY cabot-common/cabot_msgs $HOME/cabot_msgs
 COPY cabot_app.py $HOME/cabot_app.py
 COPY cabot_log_report.py $HOME/cabot_log_report.py
 COPY common.py $HOME/common.py
@@ -123,6 +123,16 @@ COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale
 
-RUN . /opt/ros/humble/setup.sh && colcon build
+COPY --chown=$USERNAME:$USERNAME cabot-common $HOME/common_ws/src/cabot-common
 
-ENTRYPOINT [ "/entrypoint.sh" ]
+RUN cd $HOME/common_ws && \
+    /bin/bash -c "source /opt/ros/humble/setup.bash; colcon build --packages-select cabot_msgs" && \
+    echo "source ~/common_ws/install/setup.bash" >> ~/.bash
+
+USER root
+RUN sed -i 's:exec "$@":source /home/developer/common_ws/install/setup.bash:' /ros_entrypoint.sh && \
+    echo 'exec "$@"' >> /ros_entrypoint.sh
+
+USER $USERNAME
+
+ENTRYPOINT [ "/ros_entrypoint.sh" ]

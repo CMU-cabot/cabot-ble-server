@@ -37,6 +37,7 @@ import tcp
 from cabot import util
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate
 from cabot_log_report import LogReport
+from cabot_msgs.srv import Speak
 
 MTU_SIZE = 2**10  # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512  # should not be exceeded this value
@@ -382,15 +383,15 @@ async def main():
     global ble_manager
     global quit_flag
 
-#    def handleSpeak(req, res):
-#        req['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
-#        if ble_manager:
-#            ble_manager.handleSpeak(req, res)
-#        if tcp_server:
-#            tcp_server.handleSpeak(req, res)
-#        return True
+    def handleSpeak(req, res):
+        req['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        if ble_manager:
+            ble_manager.handleSpeak(req, res)
+        if tcp_server:
+            tcp_server.handleSpeak(req, res)
+        return True
 
-#    common.speak_service.advertise(handleSpeak)
+    common.cabot_node_common.create_service(Speak, '/speak', handleSpeak)
 
     global tcp_server_thread
     try:

@@ -30,17 +30,21 @@ import subprocess
 from uuid import UUID
 from collections import deque
 
+# WIP delete
+import roslibpy
+from roslibpy.comm import RosBridgeClientFactory
+##
+
 import rclpy
+from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.clock import Clock, ClockType
 from rclpy.time import Time
-
-from rclpy.node import Node
-from rclpy.executors import SingleThreadedExecutor
-from rclpy.executors import MultiThreadedExecutor
-from cabot_msgs.srv import Speak
-from cabot_msgs.msg import Log
 from std_msgs.msg import String, Int16
 from diagnostic_msgs.msg import DiagnosticArray
+
+from cabot_msgs.srv import Speak
+from cabot_msgs.msg import Log
 
 from cabot import util
 from cabot.event import BaseEvent
@@ -52,9 +56,8 @@ CABOT_BLE_VERSION = "20230222"
 
 ble_manager = None
 
+# WIP delete
 # settings for roslibpy reconnection
-rclpy.init()
-
 ROS_CLIENT_CONNECTED = [False]
 DEBUG=False
 
@@ -72,25 +75,7 @@ def set_debug_mode():
 if DEBUG:
     set_debug_mode()
 
-
-
-class CaBotNode_Pub(Node):
-    def __init__(self):
-        super().__init__('cabot_node_pub')
-    
-        self.cabot_event_pub = self.create_publisher(String, '/cabot/event', 5)
-        self.ble_hb_pub = self.create_publisher(String, '/cabot/ble_heart_beat', 5)
-        self.activity_log_pub = self.create_publisher(Log, '/cabot/activity_log', 5)
-    def cabot_pub_event(self, msg):
-        self.cabot_event_pub.publish(msg)
-    def cabot_ble_hb_pub(self, msg):
-        self.ble_hb_pub.publish(msg)
-    def cabot_activity_log_pub(self, log_msg):
-        self.activity_log_pub.publish(log_msg)
-
 message_buffer = deque(maxlen=10)
-
-node_pub = CaBotNode_Pub()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -106,7 +91,7 @@ def activity_log(category="", text="", memo=""):
         log_msg.text = text
         log_msg.memo = memo
 
-        node_pub.cabot_activity_log_pub(log_msg)
+        cabot_node_common.pub_node.cabot_activity_log_pub(log_msg)
     except:
         logger.info(traceback.format_exc())
 
@@ -125,51 +110,6 @@ def clear_event_handler():
     global event_handlers
     event_handlers.clear()
 
-
-class CaBotNode_Sub(Node):
-    def __init__(self):
-        super().__init__('cabot_node_sub')
-    
-        self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", self.diagnostic_agg_callback, 10)
-        self.cabot_event_sub = self.create_subscription(String, '/cabot/event', self.cabot_event_callback, 10)
-        self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', self.cabot_touch_callback, 10)
-#        self.speak_service = self.create_service(Speak, '/speak')
-#        self.restart_localization_service = self.create_service(mf_localization_msgs/RestartLocalization, '/restart_localization')
-
-    def diagnostic_agg_callback(self, msg):
-        global diagnostics
-        diagnostics = msg.status
-        for diagnostic in diagnostics:
-            # reduce floating number digits
-            for i in range(len(diagnostic.values)-1, -1, -1):
-                value = diagnostic.values[i]
-                if value['key'] == 'Minimum acceptable frequency (Hz)' or \
-                   value['key'] == 'Maximum acceptable frequency (Hz)' or \
-                   value['key'] == 'Events in window' or \
-                   value['key'] == 'Events since startup':
-                    diagnostic['values'].pop(i)
-                    continue
-                try:
-                    value.value = "%.2f"%(float(value.value))
-                except:
-                    pass
-                    
-    def cabot_event_callback(self, msg):
-        logger.info("cabot_event_callback is called")
-        global event_handlers
-        if event_handlers.count == 0:
-            logger.error("There is no event_handler instance")
-
-        request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
-        for handler in event_handlers:
-            handler.handleEventCallback(msg, request_id)
-        activity_log("cabot/event", msg.data)
-
-    def cabot_touch_callback(self, msg):
-        message_buffer.append(msg.data)
-
-node1 = CaBotNode_Sub()
-
 @util.setInterval(0.2)
 def send_touch():
     if message_buffer:
@@ -185,7 +125,6 @@ def send_touch():
         handler.handleTouchCallback(message)
 
 send_touch()
-
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False):
@@ -248,12 +187,12 @@ class CabotManageChar(BLESubChar):
             event = NavigationEvent(subtype="language", param=lang)
             msg = String()
             msg.data = str(event)
-            node_pub.cabot_pub_event(msg)
 #       if value.startswith("restart_localization"):
 #           def callback(response):
 #               logger.info(f"Localization restart: {response=}")
 #           request = roslibpy.ServiceRequest({})
 #           restart_localization_service.call(request, callback)
+            cabot_node_common.pub_node.cabot_event_pub.publish(msg)
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
@@ -272,14 +211,14 @@ class DestinationChar(BLESubChar):
             event = NavigationEvent(subtype="cancel", param=None)
             msg = String()
             msg.data = str(event)
-            node_pub.cabot_pub_event(msg)
+            cabot_node_common.pub_node.cabot_event_pub.publish(msg)
             return
 
         logger.info("destination: %s", value)
         event = NavigationEvent(subtype="destination", param=value)
         msg = String()
         msg.data = str(event)
-        node_pub.cabot_pub_event(msg)
+        cabot_node_common.pub_node.cabot_event_pub.publish(msg)
 
 
 class SummonsChar(BLESubChar):
@@ -292,7 +231,7 @@ class SummonsChar(BLESubChar):
         event = NavigationEvent(subtype="summons", param=value)
         msg = String()
         msg.data = str(event)
-        node_pub.cabot_pub_event(msg)
+        cabot_node_common.pub_node.cabot_event_pub.publish(msg)
 
 
 class HeartbeatChar(BLESubChar):
@@ -304,7 +243,7 @@ class HeartbeatChar(BLESubChar):
         logger.info("heartbeat(%s):%s", self.owner.address, value)
         msg = String()
         msg.data = value
-        node_pub.cabot_ble_hb_pub(msg)
+        cabot_node_common.ble_hb_topic.publish(msg)
         self.owner.last_heartbeat = time.time()
 
 
@@ -515,23 +454,97 @@ class SystemStatus:
             'level': self.level,
             'diagnostics': self.diagnostics
         }
-     
-executor = MultiThreadedExecutor()
-    
-def run_thread(node_pub, node1, executor):
-    def _run_thread():
-        executor.add_node(node_pub)
-        executor.add_node(node1)
+
+class CabotNode_Pub(Node):
+    def __init__(self):
+        super().__init__('cabot_node_pub')
+
+        self.cabot_event_pub = self.create_publisher(String, '/cabot/event', 5)
+        self.ble_hb_pub = self.create_publisher(String, '/cabot/ble_heart_beat', 5)
+        self.activity_log_pub = self.create_publisher(Log, '/cabot/activity_log', 5)
+
+    def cabot_pub_event(self, msg):
+        self.cabot_event_pub.publish(msg)
+
+    def cabot_ble_hb_pub(self, msg):
+        self.ble_hb_pub.publish(msg)
+
+    def cabot_activity_log_pub(self, log_msg):
+        self.activity_log_pub.publish(log_msg)
+
+class CabotNode_Sub(Node):
+    def __init__(self):
+        super().__init__('cabot_node_sub')
+
+        self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", self.diagnostic_agg_callback, 10)
+        self.cabot_event_sub = self.create_subscription(String, '/cabot/event', self.cabot_event_callback, 10)
+        self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', self.cabot_touch_callback, 10)
+        #self.speak_service = self.create_service(Speak, '/speak', callback)
+#        self.restart_localization_service = self.create_service(mf_localization_msgs/RestartLocalization, '/restart_localization')
+
+    def diagnostic_agg_callback(self, msg):
+        global diagnostics
+        diagnostics = msg.status
+        for diagnostic in diagnostics:
+            # reduce floating number digits
+            for i in range(len(diagnostic.values)-1, -1, -1):
+                value = diagnostic.values[i]
+                if value['key'] == 'Minimum acceptable frequency (Hz)' or \
+                   value['key'] == 'Maximum acceptable frequency (Hz)' or \
+                   value['key'] == 'Events in window' or \
+                   value['key'] == 'Events since startup':
+                    diagnostic['values'].pop(i)
+                    continue
+                try:
+                    value.value = "%.2f"%(float(value.value))
+                except:
+                    pass
+
+    def cabot_event_callback(self, msg):
+        logger.info("cabot_event_callback is called")
+        global event_handlers
+        if event_handlers.count == 0:
+            logger.error("There is no event_handler instance")
+
+        request_id = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        for handler in event_handlers:
+            handler.handleEventCallback(msg, request_id)
+        activity_log("cabot/event", msg.data)
+
+    def cabot_touch_callback(self, msg):
+        message_buffer.append(msg.data)
+
+    #def create_service(self, type, name, callback):
+    #    #self.speak_service = self.create_service(type, name, callback)
+    #    print("tes")
+
+class CabotNode_Common():
+    def __init__(self):
+        rclpy.init()
+
+    def create_nodes(self):
+        self.pub_node = CabotNode_Pub()
+        self.sub_node = CabotNode_Sub()
+
+        self.executor = MultiThreadedExecutor()
+
+        self.executor.add_node(self.pub_node)
+        self.executor.add_node(self.sub_node)
+
+    def start(self):
         try:
             while rclpy.ok():
-                executor.spin_once()
+                self.executor.spin_once()
         except:
             pass
-#            logger.error(traceback.format_exc())
-        node_pub.destroy_node()
-        node1.destroy_node()
-        rclpy.shutdown()
-    return _run_thread
-            
-thread = threading.Thread(target=run_thread(node_pub, node1, executor))
-thread.start()
+            self.pub_node.destroy_node()
+            self.sub_node.destroy_node()
+            rclpy.shutdown()
+
+    def create_service(self, type, name, callback):
+        self.sub_node.create_service(type, name, callback)
+
+cabot_node_common = CabotNode_Common()
+cabot_node_common.create_nodes()
+ros2_thread = threading.Thread(target=cabot_node_common.start)
+ros2_thread.start()
