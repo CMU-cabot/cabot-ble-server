@@ -131,6 +131,7 @@ RUN cd $HOME/common_ws && \
 
 USER root
 RUN sed -i 's:exec "$@":source /home/developer/common_ws/install/setup.bash:' /ros_entrypoint.sh && \
+		echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus" >> /ros_entrypoint.sh && \
     echo 'exec "$@"' >> /ros_entrypoint.sh
 
 USER $USERNAME
