@@ -532,14 +532,14 @@ class CabotNode_Common():
         self.executor.add_node(self.sub_node)
 
     def start(self):
-        try:
-            while rclpy.ok():
+        while rclpy.ok():
+            try:
                 self.executor.spin_once()
-        except:
-            pass
-            self.pub_node.destroy_node()
-            self.sub_node.destroy_node()
-            rclpy.shutdown()
+            except:
+                logger.error(trackback.format.ext())
+        self.pub_node.destroy_node()
+        self.sub_node.destroy_node()
+        rclpy.shutdown()
 
     def create_service(self, type, name, callback):
         self.sub_node.create_service(type, name, callback)
