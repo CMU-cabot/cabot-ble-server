@@ -243,7 +243,7 @@ class HeartbeatChar(BLESubChar):
         logger.info("heartbeat(%s):%s", self.owner.address, value)
         msg = String()
         msg.data = value
-        cabot_node_common.ble_hb_topic.publish(msg)
+        cabot_node_common.pub_node.ble_hb_topic.publish(msg)
         self.owner.last_heartbeat = time.time()
 
 
@@ -460,14 +460,14 @@ class CabotNode_Pub(Node):
         super().__init__('cabot_node_pub')
 
         self.cabot_event_pub = self.create_publisher(String, '/cabot/event', 5)
-        self.ble_hb_pub = self.create_publisher(String, '/cabot/ble_heart_beat', 5)
+        self.ble_hb_topic = self.create_publisher(String, '/cabot/ble_heart_beat', 5)
         self.activity_log_pub = self.create_publisher(Log, '/cabot/activity_log', 5)
 
     def cabot_pub_event(self, msg):
         self.cabot_event_pub.publish(msg)
 
     def cabot_ble_hb_pub(self, msg):
-        self.ble_hb_pub.publish(msg)
+        self.ble_hb_topic.publish(msg)
 
     def cabot_activity_log_pub(self, log_msg):
         self.activity_log_pub.publish(log_msg)
