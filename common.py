@@ -42,6 +42,7 @@ from rclpy.clock import Clock, ClockType
 from rclpy.time import Time
 from std_msgs.msg import String, Int16
 from diagnostic_msgs.msg import DiagnosticArray
+from rosidl_runtime_py.convert import message_to_ordereddict
 
 from cabot_msgs.srv import Speak
 from cabot_msgs.msg import Log
@@ -483,11 +484,12 @@ class CabotNode_Sub(Node):
 
     def diagnostic_agg_callback(self, msg):
         global diagnostics
-        diagnostics = msg.status
+        msg_dictionary = message_to_ordereddict(msg)
+        diagnostics = msg_dictionary['status']
         for diagnostic in diagnostics:
             # reduce floating number digits
-            for i in range(len(diagnostic.values)-1, -1, -1):
-                value = diagnostic.values[i]
+            for i in range(len(diagnostic['values'])-1, -1, -1):
+                value = diagnostic['values'][i]
                 if value['key'] == 'Minimum acceptable frequency (Hz)' or \
                    value['key'] == 'Maximum acceptable frequency (Hz)' or \
                    value['key'] == 'Events in window' or \
@@ -495,7 +497,7 @@ class CabotNode_Sub(Node):
                     diagnostic['values'].pop(i)
                     continue
                 try:
-                    value.value = "%.2f"%(float(value.value))
+                    value['value'] = "%.2f"%(float(value['value']))
                 except:
                     pass
 
