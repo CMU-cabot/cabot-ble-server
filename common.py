@@ -540,7 +540,6 @@ class CabotNode_Common():
                 logger.error(traceback.format_exc())
         self.pub_node.destroy_node()
         self.sub_node.destroy_node()
-        rclpy.shutdown()
 
     def create_service(self, type, name, callback):
         self.sub_node.create_service(type, name, callback)

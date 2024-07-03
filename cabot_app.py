@@ -31,6 +31,8 @@ import subprocess
 import sys
 from rosidl_runtime_py.convert import message_to_ordereddict
 
+import rclpy
+
 import common
 import ble
 import tcp
@@ -299,8 +301,6 @@ def sigint_handler(sig, frame):
                 battery_thread.join()
             if ble_manager:
                 ble_manager.stop()
-#            common.client.terminate()
-#            common.cancel.set()
 
             if tcp_server_thread:
                 try:
@@ -310,6 +310,15 @@ def sigint_handler(sig, frame):
                 while tcp_server_thread.is_alive():
                     common.logger.info(f"wait tcp server thread {tcp_server_thread}")
                     tcp_server_thread.join(timeout=1)
+
+            if common.ros2_thread:
+                try:
+                    rclpy.shutdown()
+                except:
+                    common.logger.error(traceback.format_exc())
+                while common.ros2_thread.is_alive():
+                    common.logger.info(f"wait ros2 server thread {common.ros2_thread}")
+                    common.ros2_thread.join(timeout=1)
         except:
             common.logger.error(traceback.format_exc())
     else:
