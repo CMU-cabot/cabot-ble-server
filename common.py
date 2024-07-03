@@ -536,7 +536,7 @@ class CabotNode_Common():
             try:
                 self.executor.spin_once()
             except:
-                logger.error(trackback.format.ext())
+                logger.error(traceback.format_exc())
         self.pub_node.destroy_node()
         self.sub_node.destroy_node()
         rclpy.shutdown()
