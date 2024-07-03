@@ -385,13 +385,14 @@ async def main():
     global quit_flag
 
     def handleSpeak(req, res):
+        res.result = False
         req_dictionary = message_to_ordereddict(req)
         req_dictionary['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
         if ble_manager:
             ble_manager.handleSpeak(req_dictionary, res)
         if tcp_server:
             tcp_server.handleSpeak(req_dictionary, res)
-        return True
+        return res
 
     common.cabot_node_common.create_service(Speak, '/speak', handleSpeak)
 
