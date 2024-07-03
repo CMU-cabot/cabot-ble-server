@@ -29,6 +29,7 @@ import traceback
 import signal
 import subprocess
 import sys
+from rosidl_runtime_py.convert import message_to_ordereddict
 
 import common
 import ble
@@ -384,11 +385,12 @@ async def main():
     global quit_flag
 
     def handleSpeak(req, res):
-        req['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        req_dictionary = message_to_ordereddict(req)
+        req_dictionary['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
         if ble_manager:
-            ble_manager.handleSpeak(req, res)
+            ble_manager.handleSpeak(req_dictionary, res)
         if tcp_server:
-            tcp_server.handleSpeak(req, res)
+            tcp_server.handleSpeak(req_dictionary, res)
         return True
 
     common.cabot_node_common.create_service(Speak, '/speak', handleSpeak)

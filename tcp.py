@@ -129,7 +129,7 @@ class CaBotTCP():
     def handleSpeak(self, req, res):
         common.logger.info("/speak request tcp (%s)", str(req))
         self.speak_char.handleSpeak(req=req)
-        res['result'] = True
+        res.result = True
         common.logger.info("/speak request tcp end")
         return True
 
