@@ -458,7 +458,7 @@ class SystemStatus:
 
 class CabotNode_Pub(Node):
     def __init__(self):
-        super().__init__('cabot_app_server_pub')
+        super().__init__('cabot_app_server_pub', start_parameter_services=False)
 
         self.cabot_event_pub = self.create_publisher(String, '/cabot/event', 5)
         self.ble_hb_topic = self.create_publisher(String, '/cabot/ble_heart_beat', 5)
@@ -475,7 +475,7 @@ class CabotNode_Pub(Node):
 
 class CabotNode_Sub(Node):
     def __init__(self):
-        super().__init__('cabot_app_server_sub')
+        super().__init__('cabot_app_server_sub', start_parameter_services=False)
 
         self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", self.diagnostic_agg_callback, 10)
         self.cabot_event_sub = self.create_subscription(String, '/cabot/event', self.cabot_event_callback, 10)
