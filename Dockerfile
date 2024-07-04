@@ -124,9 +124,10 @@ COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_de
 COPY cabot-device-check/locale $HOME/locale
 
 COPY --chown=$USERNAME:$USERNAME cabot-common $HOME/common_ws/src/cabot-common
+COPY --chown=$USERNAME:$USERNAME cabot-navigation $HOME/common_ws/src/cabot-navigation
 
 RUN cd $HOME/common_ws && \
-    /bin/bash -c "source /opt/ros/humble/setup.bash; colcon build --packages-select cabot_msgs" && \
+    /bin/bash -c "source /opt/ros/humble/setup.bash; colcon build --packages-select cabot_msgs mf_localization_msgs" && \
     echo "source ~/common_ws/install/setup.bash" >> ~/.bash
 
 USER root

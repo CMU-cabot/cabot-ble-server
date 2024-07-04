@@ -44,6 +44,7 @@ from std_msgs.msg import String, Int16
 from diagnostic_msgs.msg import DiagnosticArray
 from rosidl_runtime_py.convert import message_to_ordereddict
 
+from mf_localization_msgs.srv import RestartLocalization
 from cabot_msgs.srv import Speak
 from cabot_msgs.msg import Log
 
@@ -188,12 +189,16 @@ class CabotManageChar(BLESubChar):
             event = NavigationEvent(subtype="language", param=lang)
             msg = String()
             msg.data = str(event)
-#       if value.startswith("restart_localization"):
-#           def callback(response):
-#               logger.info(f"Localization restart: {response=}")
-#           request = roslibpy.ServiceRequest({})
-#           restart_localization_service.call(request, callback)
             cabot_node_common.pub_node.cabot_event_pub.publish(msg)
+        if value.startswith("restart_localization"):
+            req = RestartLocalization.Request()
+            srv = cabot_node_common.sub_node.create_client(RestartLocalization, "/restart_localization")
+            self.future = srv.call_async(req)
+
+            def done_callback(response):
+                logger.info(f"Localization restart: {response=}")
+
+            self.future.add_done_callback(done_callback)
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
