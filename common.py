@@ -30,11 +30,6 @@ import subprocess
 from uuid import UUID
 from collections import deque
 
-# WIP delete
-import roslibpy
-from roslibpy.comm import RosBridgeClientFactory
-##
-
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
@@ -58,9 +53,6 @@ CABOT_BLE_VERSION = "20230222"
 
 ble_manager = None
 
-# WIP delete
-# settings for roslibpy reconnection
-ROS_CLIENT_CONNECTED = [False]
 DEBUG=False
 
 ### Debug
@@ -519,10 +511,6 @@ class CabotNode_Sub(Node):
 
     def cabot_touch_callback(self, msg):
         message_buffer.append(msg.data)
-
-    #def create_service(self, type, name, callback):
-    #    #self.speak_service = self.create_service(type, name, callback)
-    #    print("tes")
 
 class CabotNode_Common():
     def __init__(self):
