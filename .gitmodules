@@ -1,6 +1,3 @@
 [submodule "cabot-device-check"]
 	path = cabot-device-check
 	url = git@github.com:cmu-cabot/cabot-device-check.git
-[submodule "cabot-common"]
-        path = cabot-common
-        url = git@github.com:cmu-cabot/cabot-common.git
