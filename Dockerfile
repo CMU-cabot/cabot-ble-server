@@ -1,4 +1,17 @@
-FROM ros:humble-ros-base
+FROM ros:humble-ros-base as cache
+
+RUN apt update && \
+	apt install -y --no-install-recommends \
+	git \
+	&& \
+	apt clean && \
+	rm -rf /var/lib/apt/lists/*
+
+RUN cd / && \
+		git clone https://github.com/CMU-cabot/cabot-common.git && \
+		git clone https://github.com/CMU-cabot/cabot-navigation.git
+
+FROM ros:humble-ros-base as final
 
 ENV DEBIAN_FRONTEND="noninteractive" \
     UBUNTU_DISTRO=jammy
@@ -123,8 +136,8 @@ COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale
 
-COPY --chown=$USERNAME:$USERNAME cabot-common $HOME/common_ws/src/cabot-common
-COPY --chown=$USERNAME:$USERNAME cabot-navigation $HOME/common_ws/src/cabot-navigation
+COPY --chown=$USERNAME:$USERNAME --from=cache /cabot-common/cabot_msgs $HOME/common_ws/src/cabot-common/cabot_msgs
+COPY --chown=$USERNAME:$USERNAME --from=cache /cabot-navigation/mf_localization_msgs $HOME/common_ws/src/cabot-navigation/mf_localization_msgs
 
 RUN cd $HOME/common_ws && \
     /bin/bash -c "source /opt/ros/humble/setup.bash; colcon build --packages-select cabot_msgs mf_localization_msgs" && \
