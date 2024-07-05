@@ -136,15 +136,16 @@ COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale
 
-COPY --chown=$USERNAME:$USERNAME --from=cache /cabot-common/cabot_msgs $HOME/common_ws/src/cabot-common/cabot_msgs
-COPY --chown=$USERNAME:$USERNAME --from=cache /cabot-navigation/mf_localization_msgs $HOME/common_ws/src/cabot-navigation/mf_localization_msgs
+ENV DEPENDENCY_WS $HOME/dependency_ws
 
-RUN cd $HOME/common_ws && \
-    /bin/bash -c "source /opt/ros/humble/setup.bash; colcon build --packages-select cabot_msgs mf_localization_msgs" && \
-    echo "source ~/common_ws/install/setup.bash" >> ~/.bash
+COPY --chown=$USERNAME:$USERNAME --from=cache /cabot-common/cabot_msgs $DEPENDENCY_WS/src/cabot-common/cabot_msgs
+COPY --chown=$USERNAME:$USERNAME --from=cache /cabot-navigation/mf_localization_msgs $DEPENDENCY_WS/src/cabot-navigation/mf_localization_msgs
+
+RUN cd $DEPENDENCY_WS && \
+    /bin/bash -c "source /opt/ros/humble/setup.bash; colcon build --packages-select cabot_msgs mf_localization_msgs"
 
 USER root
-RUN sed -i 's:exec "$@":source /home/developer/common_ws/install/setup.bash:' /ros_entrypoint.sh && \
+RUN sed -i 's:exec "$@":source $DEPENDENCY_WS/install/setup.bash:' /ros_entrypoint.sh && \
 		echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus" >> /ros_entrypoint.sh && \
     echo 'exec "$@"' >> /ros_entrypoint.sh
 
