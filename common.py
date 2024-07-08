@@ -184,17 +184,13 @@ class CabotManageChar(BLESubChar):
             cabot_node_common.pub_node.cabot_event_pub.publish(msg)
         if value.startswith("restart_localization"):
             req = RestartLocalization.Request()
-            # creating a temporary client
-            srv = cabot_node_common.sub_node.create_client(RestartLocalization, "/restart_localization")
-            self.future = srv.call_async(req)
+
+            self.future = cabot_node_common.sub_node.restart_localization_client.call_async(req)
 
             def done_callback(response):
                 logger.info(f"Localization restart: {response=}")
 
             self.future.add_done_callback(done_callback)
-
-            # destroying a temporary client
-            srv.destroy()
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
@@ -481,6 +477,7 @@ class CabotNode_Sub(Node):
         self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", self.diagnostic_agg_callback, 10)
         self.cabot_event_sub = self.create_subscription(String, '/cabot/event', self.cabot_event_callback, 10)
         self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', self.cabot_touch_callback, 10)
+        self.restart_localization_client = self.create_client(RestartLocalization, "/restart_localization")
 
     def diagnostic_agg_callback(self, msg):
         global diagnostics
