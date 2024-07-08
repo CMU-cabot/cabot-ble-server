@@ -477,7 +477,6 @@ class CabotNode_Sub(Node):
         self.diagnostics_sub = self.create_subscription(DiagnosticArray, "/diagnostics_agg", self.diagnostic_agg_callback, 10)
         self.cabot_event_sub = self.create_subscription(String, '/cabot/event', self.cabot_event_callback, 10)
         self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', self.cabot_touch_callback, 10)
-#        self.restart_localization_service = self.create_service(mf_localization_msgs/RestartLocalization, '/restart_localization')
 
     def diagnostic_agg_callback(self, msg):
         global diagnostics
