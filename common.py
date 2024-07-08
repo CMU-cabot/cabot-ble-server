@@ -184,6 +184,7 @@ class CabotManageChar(BLESubChar):
             cabot_node_common.pub_node.cabot_event_pub.publish(msg)
         if value.startswith("restart_localization"):
             req = RestartLocalization.Request()
+            # creating a temporary client
             srv = cabot_node_common.sub_node.create_client(RestartLocalization, "/restart_localization")
             self.future = srv.call_async(req)
 
@@ -191,6 +192,9 @@ class CabotManageChar(BLESubChar):
                 logger.info(f"Localization restart: {response=}")
 
             self.future.add_done_callback(done_callback)
+
+            # destroying a temporary client
+            srv.destroy()
 
     def not_found(self):
         logger.error("%s is not implemented", self.uuid)
