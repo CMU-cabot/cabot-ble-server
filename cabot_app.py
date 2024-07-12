@@ -377,9 +377,11 @@ async def main():
     global battery_thread
     if port_name is not None and baud is not None:
         driver = BatteryDriver(port_name, baud, delegate=cabot_manager)
-        battery_driver_node = BatteryDriverNode(common.client, driver)
+        battery_driver_node = BatteryDriverNode(driver)
         battery_thread = threading.Thread(target=driver.start)
         battery_thread.start()
+        battery_thread_node = threading.Thread(target=battery_driver_node.start)
+        battery_thread_node.start()
 
     result = subprocess.call(["grep", "-E", "^ControllerMode *= *le$", "/etc/bluetooth/main.conf"])
     if result != 0:
