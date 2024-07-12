@@ -12,7 +12,7 @@ scriptdir=`pwd`
 
 ## install cabot-ble-server
 sudo ln -sf $scriptdir /opt/cabot-ble-server
-docker-compose build --build-arg UID=$(id -u)
+docker compose build --build-arg UID=$(id -u)
 
 ## install cabot-ble-server.service
 INSTALL_DIR=$HOME/.config/systemd/user
