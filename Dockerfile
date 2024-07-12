@@ -7,9 +7,15 @@ RUN apt update && \
 	apt clean && \
 	rm -rf /var/lib/apt/lists/*
 
-RUN cd / && \
-		git clone https://github.com/CMU-cabot/cabot-common.git && \
-		git clone https://github.com/CMU-cabot/cabot-navigation.git
+RUN cd /tmp && \
+	git clone https://github.com/CMU-cabot/cabot-common.git && \
+	git clone https://github.com/CMU-cabot/cabot-navigation.git && \
+	mkdir -p /opt/custom_ws/src && \
+	cd /opt/custom_ws && \
+        cp -r /tmp/cabot-common/cabot_msgs src && \
+	cp -r /tmp/cabot-navigation/mf_localization_msgs src && \
+	. /opt/ros/humble/setup.sh && \
+        colcon build
 
 FROM ros:humble-ros-base as final
 
@@ -109,6 +115,11 @@ COPY requirements.txt requirements.txt
 RUN pip3 install  --no-cache-dir \
 	-r requirements.txt
 
+COPY --from=cache /opt/custom_ws/install /opt/custom_ws/install
+RUN sed -i 's:exec "$@":source /opt/custom_ws/install/setup.bash:' /ros_entrypoint.sh && \
+		echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus" >> /ros_entrypoint.sh && \
+    echo 'exec "$@"' >> /ros_entrypoint.sh
+
 ARG USERNAME=developer
 ARG UID=1000
 RUN useradd -m $USERNAME && \
@@ -135,20 +146,5 @@ COPY tcp.py $HOME/tcp.py
 COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale
-
-ENV DEPENDENCY_WS $HOME/dependency_ws
-
-COPY --chown=$USERNAME:$USERNAME --from=cache /cabot-common/cabot_msgs $DEPENDENCY_WS/src/cabot-common/cabot_msgs
-COPY --chown=$USERNAME:$USERNAME --from=cache /cabot-navigation/mf_localization_msgs $DEPENDENCY_WS/src/cabot-navigation/mf_localization_msgs
-
-RUN cd $DEPENDENCY_WS && \
-    /bin/bash -c "source /opt/ros/humble/setup.bash; colcon build --packages-select cabot_msgs mf_localization_msgs"
-
-USER root
-RUN sed -i 's:exec "$@":source $DEPENDENCY_WS/install/setup.bash:' /ros_entrypoint.sh && \
-		echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus" >> /ros_entrypoint.sh && \
-    echo 'exec "$@"' >> /ros_entrypoint.sh
-
-USER $USERNAME
 
 ENTRYPOINT [ "/ros_entrypoint.sh" ]
