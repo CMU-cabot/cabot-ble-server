@@ -1,0 +1,11 @@
+
+launch:
+  - node:
+      pkg: cabot_app_server
+      exec: cabot_app.py
+      name: cabot_app_server
+  - node:
+      pkg: power_controller_ace
+      exec: power_controller_node.py
+      name: power_controller_node
+      namespace: ace_battery_control

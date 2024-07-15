@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(cabot_app_server)
+project(power_controller_ace)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -25,14 +25,8 @@ endif()
 ament_python_install_package(${PROJECT_NAME})
 
 install(PROGRAMS
-  scripts/ble.py
-  scripts/cabot_app.py
-  scripts/cabot_log_report.py
-  scripts/common.py
-  scripts/tcp.py
+  scripts/power_controller_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
-
-install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch/)
 
 ament_package()

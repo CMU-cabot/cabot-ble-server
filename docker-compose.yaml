@@ -30,6 +30,7 @@ services:
 # source code
       - ./docker/home:/home/developer
       - ./cabot_app_server:/home/developer/ros2_ws/src/cabot_app_server      
+      - ./power_controller_ace:/home/developer/ros2_ws/src/power_controller_ace
       - ./script:/home/developer/ros2_ws/script
     environment:
       - CABOT_NAME

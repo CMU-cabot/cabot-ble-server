@@ -72,4 +72,4 @@ function signal() {
 }
 
 source $scriptdir/../install/setup.bash
-ros2 run cabot_app_server cabot_app.py
+ros2 launch cabot_app_server launch.yaml
