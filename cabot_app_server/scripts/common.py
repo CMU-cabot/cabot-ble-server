@@ -43,8 +43,8 @@ from mf_localization_msgs.srv import RestartLocalization
 from cabot_msgs.srv import Speak
 from cabot_msgs.msg import Log
 
-from cabot import util
-from cabot.event import BaseEvent
+from cabot_common import util
+from cabot_common.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverDelegate
 from cabot_log_report import LogReport

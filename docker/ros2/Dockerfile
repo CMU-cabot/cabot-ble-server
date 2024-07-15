@@ -3,16 +3,23 @@ FROM ros:humble-ros-base as cache
 RUN apt update && \
 	apt install -y --no-install-recommends \
 	git \
+	ros-humble-diagnostic-updater \
+	ros-humble-nav2-lifecycle-manager \
 	&& \
 	apt clean && \
 	rm -rf /var/lib/apt/lists/*
 
 RUN cd /tmp && \
-	git clone https://github.com/CMU-cabot/cabot-common.git && \
 	git clone https://github.com/CMU-cabot/cabot-navigation.git && \
+	cd cabot-navigation && \
+	./setup-dependency.sh && \
 	mkdir -p /opt/custom_ws/src && \
 	cd /opt/custom_ws && \
-	cp -r /tmp/cabot-common/cabot_msgs src && \
+	cp -r /tmp/cabot-navigation/cabot-common/cabot_msgs src && \
+	cp -r /tmp/cabot-navigation/cabot-common/cabot_common src && \
+	cp -r /tmp/cabot-navigation/cabot-common/docker/humble-custom/people/people_msgs src && \
+	cp -r /tmp/cabot-navigation/cabot src && \
+	cp -r /tmp/cabot-navigation/cabot_ui src && \
 	cp -r /tmp/cabot-navigation/mf_localization_msgs src && \
 	. /opt/ros/humble/setup.sh && \
 	colcon build

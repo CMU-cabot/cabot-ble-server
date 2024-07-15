@@ -37,7 +37,7 @@ import common
 import ble
 import tcp
 
-from cabot import util
+from cabot_common import util
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate
 from cabot_log_report import LogReport
 from cabot_msgs.srv import Speak
@@ -165,7 +165,7 @@ class CaBotManager(BatteryDriverDelegate):
     def add_log_request(self, request, callback):
         self._log_report.add_to_queue(request, callback)
 
-    @util.setInterval(1, logger=common.logger)
+    @util.setInterval(1)
     def _run(self):
         self._run_once()
 

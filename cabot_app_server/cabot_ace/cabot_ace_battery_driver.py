@@ -13,7 +13,7 @@ import time
 import serial
 import argparse
 
-from cabot import util
+from cabot_common import util
 
 DEBUG=False
 

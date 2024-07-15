@@ -41,8 +41,8 @@ import common
 
 import roslibpy
 
-from cabot import util
-from cabot.event import BaseEvent
+from cabot_common import util
+from cabot_common.event import BaseEvent
 from cabot_ui.event import NavigationEvent
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate, BatteryStatus
 
