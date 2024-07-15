@@ -23,8 +23,6 @@ endif()
 
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
-ament_python_install_package(cabot)
-ament_python_install_package(cabot_ui)
 ament_python_install_package(cabot_ace)
 
 install(PROGRAMS

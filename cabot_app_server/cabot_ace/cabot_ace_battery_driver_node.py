@@ -9,7 +9,7 @@ from std_srvs.srv import Empty, SetBool
 import traceback
 
 from .cabot_ace_battery_driver import BatteryDriver, BatteryDriverDelegate, BatteryStatus
-from cabot import util
+from cabot_common import util
 
 DEBUG=False
 
