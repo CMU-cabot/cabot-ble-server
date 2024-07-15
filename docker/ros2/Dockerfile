@@ -12,10 +12,10 @@ RUN cd /tmp && \
 	git clone https://github.com/CMU-cabot/cabot-navigation.git && \
 	mkdir -p /opt/custom_ws/src && \
 	cd /opt/custom_ws && \
-        cp -r /tmp/cabot-common/cabot_msgs src && \
+	cp -r /tmp/cabot-common/cabot_msgs src && \
 	cp -r /tmp/cabot-navigation/mf_localization_msgs src && \
 	. /opt/ros/humble/setup.sh && \
-        colcon build
+	colcon build
 
 FROM ros:humble-ros-base as final
 
@@ -120,12 +120,15 @@ RUN sed -i 's:exec "$@":source /opt/custom_ws/install/setup.bash:' /ros_entrypoi
 		echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus" >> /ros_entrypoint.sh && \
     echo 'exec "$@"' >> /ros_entrypoint.sh
 
+COPY launch.sh /launch.sh
+COPY entrypoint.sh /entrypoint.sh
+
 ARG USERNAME=developer
 ARG UID=1000
 RUN useradd -m $USERNAME && \
         echo "$USERNAME:$USERNAME" | chpasswd && \
         usermod --shell /bin/bash $USERNAME && \
-	usermod -aG sudo $USERNAME && \
+        usermod -aG sudo $USERNAME && \
         mkdir -p /etc/sudoers.d/ && \
         echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USERNAME && \
         chmod 0440 /etc/sudoers.d/$USERNAME && \
@@ -134,17 +137,14 @@ RUN useradd -m $USERNAME && \
 
 USER $USERNAME
 ENV HOME /home/$USERNAME
-WORKDIR $HOME
-COPY cabot $HOME/cabot
-COPY cabot_ui $HOME/cabot_ui
-COPY cabot_ace $HOME/cabot_ace
-COPY cabot_app.py $HOME/cabot_app.py
-COPY cabot_log_report.py $HOME/cabot_log_report.py
-COPY common.py $HOME/common.py
-COPY ble.py $HOME/ble.py
-COPY tcp.py $HOME/tcp.py
-COPY entrypoint.sh /entrypoint.sh
-COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
-COPY cabot-device-check/locale $HOME/locale
+WORKDIR $HOME/ros2_ws
+# COPY cabot $HOME/cabot
+# COPY cabot_ui $HOME/cabot_ui
+# COPY cabot_ace $HOME/cabot_ace
+# COPY cabot_app.py $HOME/cabot_app.py
+# COPY cabot_log_report.py $HOME/cabot_log_report.py
+# COPY common.py $HOME/common.py
+# COPY ble.py $HOME/ble.py
+# COPY tcp.py $HOME/tcp.py
 
 ENTRYPOINT [ "/ros_entrypoint.sh" ]

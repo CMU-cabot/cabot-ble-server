@@ -223,9 +223,9 @@ class CaBotManager(BatteryDriverDelegate):
 
     def _check_device_status(self):
         if self._cabot_system_status.is_active():
-            result = self._runprocess(["sudo", "-E", "./cabot-device-check/check_device_status.sh", "-j", "-s"])
+            result = self._runprocess(["sudo", "-E", "/opt/cabot-device-check/check_device_status.sh", "-j", "-s"])
         else:
-            result = self._runprocess(["sudo", "-E", "./cabot-device-check/check_device_status.sh", "-j"])
+            result = self._runprocess(["sudo", "-E", "/opt/cabot-device-check/check_device_status.sh", "-j"])
         if result and result.returncode == 0:
             self._device_status.ok()
         else:

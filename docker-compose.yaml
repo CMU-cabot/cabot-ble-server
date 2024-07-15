@@ -1,6 +1,7 @@
 services:
   ble:
-    build: .
+    build:
+      context: ./docker/ros2
     volumes:
 # device, bluetooth
       - /dev:/dev
@@ -17,7 +18,7 @@ services:
       - /sys/fs/cgroup:/sys/fs/cgroup
 # for systemctl --user
       - /run/user:/run/user
-      - ../cabot-device-check:/opt/cabot-device-check
+      - ./cabot-device-check:/opt/cabot-device-check
       - /usr/bin/docker:/usr/bin/docker
       - /usr/local/bin/docker-compose:/usr/local/bin/docker-compose
       - /var/run/docker.sock:/var/run/docker.sock
@@ -26,6 +27,10 @@ services:
 # for log report
       - /opt/report-submitter:/opt/report-submitter
       - /opt/cabot/docker/home/.ros/log:/opt/cabot/docker/home/.ros/log
+# source code
+      - ./docker/home:/home/developer
+      - ./cabot_app_server:/home/developer/ros2_ws/src/cabot_app_server      
+      - ./script:/home/developer/ros2_ws/script
     environment:
       - CABOT_NAME
       - CABOT_BLE_ADAPTER
@@ -57,4 +62,4 @@ services:
       - /dev/dri
 # device, bluetooth
     network_mode: host
-    command: ./cabot_app.py
+    command: /launch.sh app

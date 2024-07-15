@@ -21,4 +21,19 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+# Install Python modules
+ament_python_install_package(${PROJECT_NAME})
+ament_python_install_package(cabot)
+ament_python_install_package(cabot_ui)
+ament_python_install_package(cabot_ace)
+
+install(PROGRAMS
+  scripts/ble.py
+  scripts/cabot_app.py
+  scripts/cabot_log_report.py
+  scripts/common.py
+  scripts/tcp.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()
