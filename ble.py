@@ -182,6 +182,7 @@ class CaBotBLE:
         self.address = device.address
         self.ble_manager = ble_manager
         self.cabot_manager = cabot_manager
+        self.cabot_manager.register_client(self.address, address=self.address)
         self.chars = []
 
         self.version_char = common.VersionChar(self, CABOT_BLE_UUID(0x00))
@@ -203,7 +204,12 @@ class CaBotBLE:
                                                      self.cabot_manager,
                                                      common.CabotLogResponseChar(self, CABOT_BLE_UUID(0x51))))
 
-        self.chars.append(common.HeartbeatChar(self, CABOT_BLE_UUID(0x9999)))
+        def hb_callback(value, callback):
+            client_type = value.decode("utf-8")
+            client = self.cabot_manager.register_client(self.address, client_type=client_type)
+            callback(client)
+
+        self.chars.append(common.HeartbeatChar(self, CABOT_BLE_UUID(0x9999), extra_callback=hb_callback))
 
         self.last_heartbeat = time.time()
 
