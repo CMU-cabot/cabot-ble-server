@@ -121,10 +121,11 @@ def send_touch():
 send_touch()
 
 class BLESubChar:
-    def __init__(self, owner, uuid, indication=False):
+    def __init__(self, owner, uuid, indication=False, extra_callback=None):
         self.owner = owner
         self.uuid = uuid
         self.indication = indication
+        self.extra_callback = extra_callback
         self.valid = False
         self.target = None
 
@@ -137,7 +138,12 @@ class BLESubChar:
     def subscribe_to(self, target):
         self.target = target
         try:
-            target.subscribe(self.uuid, self.callback, indication=self.indication)
+            def callback_wrapper(handle, value):
+                if self.extra_callback:
+                    self.extra_callback(value, self.callback)
+                else:
+                    self.callback(handle, value)
+            target.subscribe(self.uuid, callback_wrapper, indication=self.indication)
             self.valid = True
         except:
             logger.error(traceback.format_exc())
@@ -233,17 +239,15 @@ class SummonsChar(BLESubChar):
 
 
 class HeartbeatChar(BLESubChar):
-    def __init__(self, owner, uuid):
-        super().__init__(owner, uuid)
+    def __init__(self, owner, uuid, extra_callback=None):
+        super().__init__(owner, uuid, extra_callback=extra_callback)
 
     def callback(self, handle, value):
-        value = value.decode("utf-8")
-        logger.info("heartbeat(%s):%s", self.owner.address, value)
+        logger.info(f"heartbeat : {value}")
         msg = String()
-        msg.data = value
+        msg.data = str(value)
         cabot_node_common.pub_node.ble_hb_topic.publish(msg)
         self.owner.last_heartbeat = time.time()
-
 
 class StoreChar(BLESubChar):
     def __init__(self, owner, uuid):
@@ -269,7 +273,6 @@ class VersionChar(BLENotifyChar):
         self.version = CABOT_BLE_VERSION
 
     def notify(self):
-        logger.info("sending version")
         self.send_text(self.uuid, self.version)
 
 

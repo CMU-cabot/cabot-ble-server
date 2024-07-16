@@ -80,6 +80,27 @@ class DeviceStatus:
         except:
             common.logger.info(traceback.format_exc())
 
+    def set_clients(self, clients):
+        if len(clients) == 0:
+            device = {
+                'type': "User App",
+                'model': "cabot-ios-app",
+                'level': "Error",
+                'message': "disconnected",
+                'values': []
+            }
+            self.devices.append(device)
+        else:
+            client = clients[0]
+            device = {
+                'type': "User App",
+                'model': "cabot-ios-app",
+                'level': "OK" if client.connected else "Error",
+                'message': "connected" if client.connected else "disconnected",
+                'values': []
+            }
+            self.devices.append(device)
+
     @property
     def json(self):
         return {
@@ -131,6 +152,22 @@ class SystemStatus:
         self.deactivating()
         self.diagnostics = []
 
+class AppClient():
+    ALIVE_THRESHOLD = 3.0
+
+    def __init__(self, id):
+        self.id = id
+        self.address = None
+        self.type = None
+        self.last_updated = time.time()
+
+    @property
+    def connected(self):
+        return time.time() - self.last_updated < AppClient.ALIVE_THRESHOLD
+
+    def __str__(self):
+        return f"AppClient: address={self.address}, type={self.type}"
+
 class CaBotManager(BatteryDriverDelegate):
     def __init__(self, jetson_poweroff_commands=None):
         self._device_status = DeviceStatus()
@@ -143,6 +180,7 @@ class CaBotManager(BatteryDriverDelegate):
         self.check_interval = 5
         self.run_count = 0
         self._jetson_poweroff_commands = jetson_poweroff_commands
+        self._client_map = {}
 
     def run(self, start=False):
         self.start_flag=start
@@ -194,6 +232,7 @@ class CaBotManager(BatteryDriverDelegate):
         else:
             self._device_status.error()
         self._device_status.set_json(result.stdout)
+        self._device_status.set_clients(self.get_clients_by_type("Normal"))
 
     def _check_service_active(self):
         result = self._runprocess(["systemctl", "--user", "is-active", "cabot"])
@@ -261,6 +300,37 @@ class CaBotManager(BatteryDriverDelegate):
 
     def cabot_battery_status(self):
         return self._battery_status
+
+    def register_client(self, id, address=None, client_type=None):
+        if id is None:
+            return
+        client = AppClient(id)
+        if id in self._client_map:
+            client = self._client_map[id]
+        else:
+            self._client_map[id] = client
+        client.last_updated = time.time()
+        if address is not None and client.address is None:
+            client.address = address
+            common.logger.info(client)
+        if client_type is not None and client.type is None:
+            client.type = client_type
+            common.logger.info(client)
+        return client
+
+    def get_client(self, id):
+        if id in self._client_map:
+            return self._client_map[id]
+        return None
+
+    def get_clients_by_type(self, client_type):
+        clients = []
+        for key in self._client_map.keys():
+            if self._client_map[key].type != client_type:
+                continue
+            clients.append(self._client_map[key])
+        return clients
+
 
 quit_flag=False
 tcp_server = None
