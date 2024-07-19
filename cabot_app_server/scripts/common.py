@@ -483,6 +483,8 @@ class CabotNode_Sub(Node):
         msg_dictionary = message_to_ordereddict(msg)
         diagnostics = msg_dictionary['status']
         for diagnostic in diagnostics:
+            # message_to_ordereddict convert 'byte' value into 'byte string', but the app expect 'int' as rosbridge do
+            diagnostic['level'] = ord(diagnostic['level'])
             # reduce floating number digits
             for i in range(len(diagnostic['values'])-1, -1, -1):
                 value = diagnostic['values'][i]
