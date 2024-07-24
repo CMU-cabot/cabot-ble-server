@@ -153,7 +153,7 @@ class BLEDeviceManager:
             for ble in self.bles.values():
                 if ble.speak_char:
                     ble.speak_char.handleSpeak(req=req)
-        res['result'] = True
+        res.result = True
         return True
 
     def handleEventCallback(self, msg, request_id):

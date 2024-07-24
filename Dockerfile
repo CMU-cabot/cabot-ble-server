@@ -1,4 +1,23 @@
-FROM ros:humble-ros-base
+FROM ros:humble-ros-base as cache
+
+RUN apt update && \
+	apt install -y --no-install-recommends \
+	git \
+	&& \
+	apt clean && \
+	rm -rf /var/lib/apt/lists/*
+
+RUN cd /tmp && \
+	git clone https://github.com/CMU-cabot/cabot-common.git && \
+	git clone https://github.com/CMU-cabot/cabot-navigation.git && \
+	mkdir -p /opt/custom_ws/src && \
+	cd /opt/custom_ws && \
+        cp -r /tmp/cabot-common/cabot_msgs src && \
+	cp -r /tmp/cabot-navigation/mf_localization_msgs src && \
+	. /opt/ros/humble/setup.sh && \
+        colcon build
+
+FROM ros:humble-ros-base as final
 
 ENV DEBIAN_FRONTEND="noninteractive" \
     UBUNTU_DISTRO=jammy
@@ -84,6 +103,8 @@ RUN apt update && \
 	sudo \
 	systemd \
 	wireless-tools \
+	ros-humble-rmw-cyclonedds-cpp \
+	ros-humble-diagnostic-updater \
 	&& \
 	apt clean && \
 	rm -rf /var/lib/apt/lists/*
@@ -93,6 +114,11 @@ COPY requirements.txt requirements.txt
 
 RUN pip3 install  --no-cache-dir \
 	-r requirements.txt
+
+COPY --from=cache /opt/custom_ws/install /opt/custom_ws/install
+RUN sed -i 's:exec "$@":source /opt/custom_ws/install/setup.bash:' /ros_entrypoint.sh && \
+		echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus" >> /ros_entrypoint.sh && \
+    echo 'exec "$@"' >> /ros_entrypoint.sh
 
 ARG USERNAME=developer
 ARG UID=1000
@@ -121,4 +147,4 @@ COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale
 
-ENTRYPOINT [ "/entrypoint.sh" ]
+ENTRYPOINT [ "/ros_entrypoint.sh" ]

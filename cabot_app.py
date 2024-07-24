@@ -29,6 +29,9 @@ import traceback
 import signal
 import subprocess
 import sys
+from rosidl_runtime_py.convert import message_to_ordereddict
+
+import rclpy
 
 import common
 import ble
@@ -37,6 +40,7 @@ import tcp
 from cabot import util
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate
 from cabot_log_report import LogReport
+from cabot_msgs.srv import Speak
 
 MTU_SIZE = 2**10  # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512  # should not be exceeded this value
@@ -297,8 +301,6 @@ def sigint_handler(sig, frame):
                 battery_thread.join()
             if ble_manager:
                 ble_manager.stop()
-            common.client.terminate()
-            common.cancel.set()
 
             if tcp_server_thread:
                 try:
@@ -308,6 +310,15 @@ def sigint_handler(sig, frame):
                 while tcp_server_thread.is_alive():
                     common.logger.info(f"wait tcp server thread {tcp_server_thread}")
                     tcp_server_thread.join(timeout=1)
+
+            if common.ros2_thread:
+                try:
+                    rclpy.shutdown()
+                except:
+                    common.logger.error(traceback.format_exc())
+                while common.ros2_thread.is_alive():
+                    common.logger.info(f"wait ros2 server thread {common.ros2_thread}")
+                    common.ros2_thread.join(timeout=1)
         except:
             common.logger.error(traceback.format_exc())
     else:
@@ -366,9 +377,11 @@ async def main():
     global battery_thread
     if port_name is not None and baud is not None:
         driver = BatteryDriver(port_name, baud, delegate=cabot_manager)
-        battery_driver_node = BatteryDriverNode(common.client, driver)
+        battery_driver_node = BatteryDriverNode(driver)
         battery_thread = threading.Thread(target=driver.start)
         battery_thread.start()
+        battery_thread_node = threading.Thread(target=battery_driver_node.start)
+        battery_thread_node.start()
 
     result = subprocess.call(["grep", "-E", "^ControllerMode *= *le$", "/etc/bluetooth/main.conf"])
     if result != 0:
@@ -383,14 +396,16 @@ async def main():
     global quit_flag
 
     def handleSpeak(req, res):
-        req['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        res.result = False
+        req_dictionary = message_to_ordereddict(req)
+        req_dictionary['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
         if ble_manager:
-            ble_manager.handleSpeak(req, res)
+            ble_manager.handleSpeak(req_dictionary, res)
         if tcp_server:
-            tcp_server.handleSpeak(req, res)
-        return True
+            tcp_server.handleSpeak(req_dictionary, res)
+        return res
 
-    common.speak_service.advertise(handleSpeak)
+    common.cabot_node_common.create_service(Speak, '/speak', handleSpeak)
 
     global tcp_server_thread
     try:
