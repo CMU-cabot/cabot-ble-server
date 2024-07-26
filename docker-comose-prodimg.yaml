@@ -1,9 +1,6 @@
 services:
   ble:
-    build:
-      context: ./docker/ros2
-      additional_contexts:
-        cabot_src: ./
+    image: cmucal/cabot-ble-server
     volumes:
 # device, bluetooth
       - /dev:/dev
@@ -29,11 +26,6 @@ services:
 # for log report
       - /opt/report-submitter:/opt/report-submitter
       - /opt/cabot/docker/home/.ros/log:/opt/cabot/docker/home/.ros/log
-# source code
-      - ./docker/home:/home/developer
-      - ./cabot_app_server:/home/developer/ros2_ws/src/cabot_app_server      
-      - ./power_controller_ace:/home/developer/ros2_ws/src/power_controller_ace
-      - ./script:/home/developer/ros2_ws/script
     environment:
       - CABOT_NAME
       - CABOT_BLE_ADAPTER
