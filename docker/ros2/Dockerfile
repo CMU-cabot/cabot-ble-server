@@ -24,6 +24,35 @@ RUN cd /tmp && \
 	. /opt/ros/humble/setup.sh && \
 	colcon build
 
+FROM ros:humble-ros-base as build
+
+COPY --from=cache /opt/custom_ws/install /opt/custom_ws/install
+
+ARG USERNAME=developer
+ARG UID=1000
+RUN useradd -m $USERNAME && \
+    echo "$USERNAME:$USERNAME" | chpasswd && \
+    usermod --shell /bin/bash $USERNAME && \
+    usermod -aG sudo $USERNAME && \
+    mkdir -p /etc/sudoers.d/ && \
+    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USERNAME && \
+    chmod 0440 /etc/sudoers.d/$USERNAME && \
+    usermod  --uid $UID $USERNAME && \
+    groupmod --gid $UID $USERNAME
+
+USER $USERNAME
+ENV HOME /home/$USERNAME
+WORKDIR $HOME/ros2_ws
+
+COPY --from=cabot_src ./docker/ros2/ros_entrypoint.sh /ros_entrypoint.sh
+
+COPY --from=cabot_src ./cabot_app_server ./src/cabot_app_server
+COPY --from=cabot_src ./power_controller_ace ./src/power_controller_ace
+COPY --from=cabot_src ./docker/ros2/launch.sh /launch.sh
+COPY --from=cabot_src ./script ./script
+
+RUN /ros_entrypoint.sh /launch.sh build
+
 FROM ros:humble-ros-base as final
 
 ENV DEBIAN_FRONTEND="noninteractive" \
@@ -117,7 +146,7 @@ RUN apt update && \
 	rm -rf /var/lib/apt/lists/*
 
 
-COPY requirements.txt requirements.txt
+COPY --from=cabot_src ./docker/ros2/requirements.txt requirements.txt
 
 RUN pip3 install  --no-cache-dir \
 	-r requirements.txt
@@ -127,8 +156,7 @@ RUN sed -i 's:exec "$@":source /opt/custom_ws/install/setup.bash:' /ros_entrypoi
 		echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus" >> /ros_entrypoint.sh && \
     echo 'exec "$@"' >> /ros_entrypoint.sh
 
-COPY launch.sh /launch.sh
-COPY entrypoint.sh /entrypoint.sh
+COPY --from=cabot_src ./docker/ros2/launch.sh /launch.sh
 
 ARG USERNAME=developer
 ARG UID=1000
@@ -145,6 +173,13 @@ RUN useradd -m $USERNAME && \
 USER $USERNAME
 ENV HOME /home/$USERNAME
 WORKDIR $HOME/ros2_ws
+
+COPY --from=cabot_src ./docker/ros2/ros_entrypoint.sh /ros_entrypoint.sh
+
+COPY --from=build $HOME/ros2_ws/install $HOME/ros2_ws/install
+COPY --from=cabot_src ./docker/ros2/launch.sh /launch.sh
+COPY --from=cabot_src ./script ./script
+
 # COPY cabot $HOME/cabot
 # COPY cabot_ui $HOME/cabot_ui
 # COPY cabot_ace $HOME/cabot_ace
