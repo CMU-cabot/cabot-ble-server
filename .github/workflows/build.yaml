@@ -31,9 +31,6 @@ jobs:
     - name: Install vcs
       run: pip3 install vcstool
 
-    - name: Prepare thirdparty repos
-      run: ./setup-dependency.sh
-
     - name: Buildx bake
       shell: bash
       run:  |
