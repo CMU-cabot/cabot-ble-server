@@ -1,0 +1,14 @@
+name: Test Building Docker Image and Workspace
+
+on:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  build-ble-server:
+    uses: cmu-cabot/cabot-ble-server/.github/workflows/build.yaml@yushim/prodimg-ble-service
+    with:
+      target: ble
+    secrets:
+      dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
