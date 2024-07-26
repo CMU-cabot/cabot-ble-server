@@ -1,4 +1,7 @@
-FROM ros:humble-ros-base as cache
+ARG BASE_IMAGE=cabot-base
+ARG FROM_IMAGE=cmucal/${BASE_IMAGE}:humble-desktop-custom-mesa
+
+FROM ${FROM_IMAGE} AS cache
 
 RUN apt update && \
 	apt install -y --no-install-recommends \
@@ -24,7 +27,7 @@ RUN cd /tmp && \
 	. /opt/ros/humble/setup.sh && \
 	colcon build
 
-FROM ros:humble-ros-base as build
+FROM ${FROM_IMAGE} AS build
 
 COPY --from=cache /opt/custom_ws/install /opt/custom_ws/install
 
@@ -53,7 +56,7 @@ COPY --from=cabot_src ./script ./script
 
 RUN /ros_entrypoint.sh /launch.sh build
 
-FROM ros:humble-ros-base as final
+FROM ${FROM_IMAGE} AS final
 
 ENV DEBIAN_FRONTEND="noninteractive" \
     UBUNTU_DISTRO=jammy

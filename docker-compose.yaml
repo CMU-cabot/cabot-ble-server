@@ -4,6 +4,16 @@ services:
       context: ./docker/ros2
       additional_contexts:
         cabot_src: ./
+      args:
+        - BASE_IMAGE=${BASE_IMAGE:-cabot-base}
+      x-bake:
+        tags:
+          - ${REGISTRY:-cmucal}/cabot-ble-server
+        platforms:
+          - linux/amd64
+          - linux/arm64
+        output:
+          - type=registry
     volumes:
 # device, bluetooth
       - /dev:/dev
