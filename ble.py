@@ -182,7 +182,6 @@ class CaBotBLE:
         self.address = device.address
         self.ble_manager = ble_manager
         self.cabot_manager = cabot_manager
-        self.cabot_manager.register_client(self.address, address=self.address)
         self.chars = []
 
         self.version_char = common.VersionChar(self, CABOT_BLE_UUID(0x00))
@@ -205,9 +204,13 @@ class CaBotBLE:
                                                      common.CabotLogResponseChar(self, CABOT_BLE_UUID(0x51))))
 
         def hb_callback(value, callback):
-            client_type = value.decode("utf-8")
-            client = self.cabot_manager.register_client(self.address, client_type=client_type)
-            callback(client)
+            if "/" in value.decode("utf-8"):
+                (client_id, client_type) = value.decode("utf-8").split("/")
+                client = self.cabot_manager.register_client(client_id=client_id, client_type=client_type)
+                callback(client)
+            else:
+                # old app
+                self.heartbeat_char.callback(0, value.decode("utf-8"))
 
         self.chars.append(common.HeartbeatChar(self, CABOT_BLE_UUID(0x9999), extra_callback=hb_callback))
 
