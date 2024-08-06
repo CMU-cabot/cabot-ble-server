@@ -382,8 +382,8 @@ class EventChars(BLENotifyChar):
 
         if event.type != NavigationEvent.TYPE:
             return
-
-        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage"]:
+        
+        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage", "startchat"]:
             return
         req = {
             'request_id': request_id,
