@@ -29,6 +29,9 @@ import traceback
 import signal
 import subprocess
 import sys
+from rosidl_runtime_py.convert import message_to_ordereddict
+
+import rclpy
 
 import common
 import ble
@@ -37,6 +40,7 @@ import tcp
 from cabot import util
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate
 from cabot_log_report import LogReport
+from cabot_msgs.srv import Speak
 
 MTU_SIZE = 2**10  # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512  # should not be exceeded this value
@@ -75,6 +79,27 @@ class DeviceStatus:
                     self.devices.append(device)
         except:
             common.logger.info(traceback.format_exc())
+
+    def set_clients(self, clients):
+        if len(clients) == 0:
+            device = {
+                'type': "User App",
+                'model': "cabot-ios-app",
+                'level': "Error",
+                'message': "disconnected",
+                'values': []
+            }
+            self.devices.append(device)
+        else:
+            client = clients[0]
+            device = {
+                'type': "User App",
+                'model': "cabot-ios-app",
+                'level': "OK" if client.connected else "Error",
+                'message': "connected" if client.connected else "disconnected",
+                'values': []
+            }
+            self.devices.append(device)
 
     @property
     def json(self):
@@ -127,6 +152,21 @@ class SystemStatus:
         self.deactivating()
         self.diagnostics = []
 
+class AppClient():
+    ALIVE_THRESHOLD = 3.0
+
+    def __init__(self, id):
+        self.client_id = id
+        self.type = None
+        self.last_updated = time.time()
+
+    @property
+    def connected(self):
+        return time.time() - self.last_updated < AppClient.ALIVE_THRESHOLD
+
+    def __str__(self):
+        return f"AppClient: client_id={self.client_id}, type={self.type}"
+
 class CaBotManager(BatteryDriverDelegate):
     def __init__(self, jetson_poweroff_commands=None):
         self._device_status = DeviceStatus()
@@ -139,6 +179,7 @@ class CaBotManager(BatteryDriverDelegate):
         self.check_interval = 5
         self.run_count = 0
         self._jetson_poweroff_commands = jetson_poweroff_commands
+        self._client_map = {}
 
     def run(self, start=False):
         self.start_flag=start
@@ -190,6 +231,7 @@ class CaBotManager(BatteryDriverDelegate):
         else:
             self._device_status.error()
         self._device_status.set_json(result.stdout)
+        self._device_status.set_clients(self.get_clients_by_type("Normal"))
 
     def _check_service_active(self):
         result = self._runprocess(["systemctl", "--user", "is-active", "cabot"])
@@ -258,6 +300,37 @@ class CaBotManager(BatteryDriverDelegate):
     def cabot_battery_status(self):
         return self._battery_status
 
+    def register_client(self, client_id=None, client_type=None):
+        if client_id is None:
+            return
+        client = AppClient(client_id)
+        if client_id in self._client_map:
+            client = self._client_map[client_id]
+        else:
+            self._client_map[client_id] = client
+        client.last_updated = time.time()
+        if client_id is not None and client.client_id is None:
+            client.client_id = client_id
+            common.logger.info(client)
+        if client_type is not None and client.type is None:
+            client.type = client_type
+            common.logger.info(client)
+        return client
+
+    def get_client(self, id):
+        if id in self._client_map:
+            return self._client_map[id]
+        return None
+
+    def get_clients_by_type(self, client_type):
+        clients = []
+        for key in self._client_map.keys():
+            if self._client_map[key].type != client_type:
+                continue
+            clients.append(self._client_map[key])
+        return clients
+
+
 quit_flag=False
 tcp_server = None
 ble_manager = None
@@ -297,8 +370,6 @@ def sigint_handler(sig, frame):
                 battery_thread.join()
             if ble_manager:
                 ble_manager.stop()
-            common.client.terminate()
-            common.cancel.set()
 
             if tcp_server_thread:
                 try:
@@ -308,6 +379,15 @@ def sigint_handler(sig, frame):
                 while tcp_server_thread.is_alive():
                     common.logger.info(f"wait tcp server thread {tcp_server_thread}")
                     tcp_server_thread.join(timeout=1)
+
+            if common.ros2_thread:
+                try:
+                    rclpy.shutdown()
+                except:
+                    common.logger.error(traceback.format_exc())
+                while common.ros2_thread.is_alive():
+                    common.logger.info(f"wait ros2 server thread {common.ros2_thread}")
+                    common.ros2_thread.join(timeout=1)
         except:
             common.logger.error(traceback.format_exc())
     else:
@@ -366,9 +446,11 @@ async def main():
     global battery_thread
     if port_name is not None and baud is not None:
         driver = BatteryDriver(port_name, baud, delegate=cabot_manager)
-        battery_driver_node = BatteryDriverNode(common.client, driver)
+        battery_driver_node = BatteryDriverNode(driver)
         battery_thread = threading.Thread(target=driver.start)
         battery_thread.start()
+        battery_thread_node = threading.Thread(target=battery_driver_node.start)
+        battery_thread_node.start()
 
     result = subprocess.call(["grep", "-E", "^ControllerMode *= *le$", "/etc/bluetooth/main.conf"])
     if result != 0:
@@ -383,14 +465,16 @@ async def main():
     global quit_flag
 
     def handleSpeak(req, res):
-        req['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        res.result = False
+        req_dictionary = message_to_ordereddict(req)
+        req_dictionary['request_id'] = time.clock_gettime_ns(time.CLOCK_REALTIME)
         if ble_manager:
-            ble_manager.handleSpeak(req, res)
+            ble_manager.handleSpeak(req_dictionary, res)
         if tcp_server:
-            tcp_server.handleSpeak(req, res)
-        return True
+            tcp_server.handleSpeak(req_dictionary, res)
+        return res
 
-    common.speak_service.advertise(handleSpeak)
+    common.cabot_node_common.create_service(Speak, '/speak', handleSpeak)
 
     global tcp_server_thread
     try:

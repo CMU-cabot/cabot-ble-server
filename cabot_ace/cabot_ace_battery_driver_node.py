@@ -3,8 +3,10 @@
 import os
 import logging
 import time
-
-import roslibpy
+import rclpy
+import rclpy.node
+from std_srvs.srv import Empty, SetBool
+import traceback
 
 from .cabot_ace_battery_driver import BatteryDriver, BatteryDriverDelegate, BatteryStatus
 from cabot import util
@@ -28,87 +30,75 @@ class Delegate(BatteryDriverDelegate):
             logger.info("lowpower shutdown requested")
 
 
-class BatteryDriverNode:
-    def __init__(self, client, driver):
-        self.client = client
+class BatteryDriverNode(rclpy.node.Node):
+    def __init__(self, driver):
+        super().__init__("battery_driver_node", start_parameter_services=False)
         self.driver = driver
         self.connected = False
 
-        self.service0 = roslibpy.Service(self.client, '/ace_battery_control/turn_jetson_switch_on', 'std_srvs/Empty')
-        self.service1 = roslibpy.Service(self.client, '/ace_battery_control/set_12v_power', 'std_srvs/SetBool')
-        self.service2 = roslibpy.Service(self.client, '/ace_battery_control/set_5v_power', 'std_srvs/SetBool')
-        self.service3 = roslibpy.Service(self.client, '/ace_battery_control/set_odrive_power', 'std_srvs/SetBool')
-        self.service4 = roslibpy.Service(self.client, '/ace_battery_control/shutdown', 'std_srvs/Empty')
-        #self.service5 = roslibpy.Service(self.client, '/ace_battery_control/set_lowpower_shutdown_threshold', 'cabot_msgs/SetUInt8')
-        self.polling_ros()
+        self.service0 = self.create_service(Empty, '/ace_battery_control/turn_jetson_switch_on', self.turn_jetson_switch_on)
+        self.service1 = self.create_service(SetBool, '/ace_battery_control/set_12v_power', self.set_12v_power)
+        self.service2 = self.create_service(SetBool, '/ace_battery_control/set_5v_power', self.set_5v_power)
+        self.service3 = self.create_service(SetBool, '/ace_battery_control/set_odrive_power', self.set_odrive_power)
+        self.service4 = self.create_service(Empty, '/ace_battery_control/shutdown', self.shutdown)
+        #self.service5 = self.create_service(cabot_msgs.msg.SetUInt8, '/ace_battery_control/set_lowpower_shutdown_threshold', self.set_lowpower_shutdown_threshold)
 
-    @util.setInterval(1.0)
-    def polling_ros(self):
-        if not self.client.is_connected:
-            self.connected = False
-        else:
-            if not self.connected:
-                logger.info("advertise services")
-                self.init_services()
-                self.connected = True
-
-    def init_services(self):
-        self.service0.advertise(self.turn_jetson_switch_on)
-        self.service1.advertise(self.set_12v_power)
-        self.service2.advertise(self.set_5v_power)
-        self.service3.advertise(self.set_odrive_power)
-        self.service4.advertise(self.shutdown)
-        #self.service5.advertise(self.set_lowpower_shutdown_threshold)
+    def start(self):
+        try:
+            rclpy.spin(self)
+        except:
+            logger.error(traceback.format_exc())
 
     def turn_jetson_switch_on(self, req, res):
         self.driver.turn_jetson_switch_on()
-        return True
+        return res
 
     def set_12v_power(self, req, res):
-        if req['data']:
+        if req.data:
             self.driver.set_12v_power(1)
         else:
             self.driver.set_12v_power(0)
-        res['success'] = True
-        return True
+        res.success = True
+        return res
 
     def set_5v_power(self, req, res):
-        if req['data']:
+        if req.data:
             self.driver.set_5v_power(1)
         else:
             self.driver.set_5v_power(0)
-        res['success'] = True
-        return True
+        res.success = True
+        return res
 
     def set_odrive_power(self, req, res):
-        if req['data']:
+        if req.data:
             self.driver.set_odrive_power(1)
         else:
             self.driver.set_odrive_power(0)
-        res['success'] = True
-        return True
+        res.success = True
+        return res
 
     def shutdown(self, req, res):
         self.driver.shutdown()
-        return True
+        return res
 
     def set_lowpower_shutdown_threshold(self, req, res):
         self.driver.set_lowpower_shutdown_threshold(msg['value'])
-        res['success'] = True
-        return True
+        return res
 
 def main():
-    client = roslibpy.Ros(host='localhost', port=9091)
+    rclpy.init()
     
     port_name = os.environ['CABOT_ACE_BATTERY_PORT'] if 'CABOT_ACE_BATTERY_PORT' in os.environ else '/dev/ttyACM0'
     baud = int(os.environ['CABOT_ACE_BATTERY_BAUD']) if 'CABOT_ACE_BATTERY_BAUD' in os.environ else 115200
     delegate = Delegate()
     driver = BatteryDriver(port_name, baud, delegate=delegate)
-    BatteryDriverNode(client, driver)
-    
-    client.run()
-    driver.start()
+    node = BatteryDriverNode(driver)
 
+    try:
+        rclpy.spin(node)
+    except:
+        logger.error(traceback.format_exc())
+    rclpy.destroy_node(node)
 
 if __name__ == "__main__":
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

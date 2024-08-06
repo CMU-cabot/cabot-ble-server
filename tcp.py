@@ -73,14 +73,20 @@ class CaBotTCP():
             @self.sio.event
             def summons(sid, data):
                 self.summons_char.callback(0, data[0].encode("utf-8"))
-            
+ 
             @self.sio.event
             def destination(sid, data):
                 self.destination_char.callback(0, data[0].encode("utf-8"))
 
             @self.sio.event
             def heartbeat(sid, data):
-                self.heartbeat_char.callback(0, data[0].encode("utf-8"))
+                if "/" in data[0]:
+                    (client_id, client_type) = data[0].split("/")
+                    client = self.cabot_manager.register_client(client_id=client_id, client_type=client_type)
+                    self.heartbeat_char.callback(0, client)
+                else:
+                    # old app
+                    self.heartbeat_char.callback(0, data[0])
 
             @self.sio.event
             def req_version(sid, data):
@@ -88,8 +94,7 @@ class CaBotTCP():
 
             @self.sio.event
             def connect(sid, environ, auth):
-                common.logger.info("new socket.io connection")
-                #self.version_char.notify()
+                common.logger.info(f"new socket.io connection {environ=}")
 
             @self.sio.event
             def log_request(sid, data):
@@ -129,7 +134,7 @@ class CaBotTCP():
     def handleSpeak(self, req, res):
         common.logger.info("/speak request tcp (%s)", str(req))
         self.speak_char.handleSpeak(req=req)
-        res['result'] = True
+        res.result = True
         common.logger.info("/speak request tcp end")
         return True
 

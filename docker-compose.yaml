@@ -49,6 +49,7 @@ services:
       - ARPSCAN_LIDAR
       - MICRO_CONTROLLER
       - LANG
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # required for display, device, and systemctl
     privileged: true
 # device, bluetooth
