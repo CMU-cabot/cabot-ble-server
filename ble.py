@@ -58,8 +58,8 @@ class BLEDeviceManager:
         service_uuids = [str(CABOT_BLE_UUID(0))]
         while self.alive:
             try:
-                common.logger.info("discover")
-                devices = await BleakScanner.discover(service_uuids=service_uuids)
+                common.logger.info(f"discover {self.bles=}")
+                devices = await BleakScanner.discover()
                 if devices:
                     common.logger.info(f"BLE devices are found {devices}")
                     for d in devices:
@@ -207,10 +207,10 @@ class CaBotBLE:
             if "/" in value.decode("utf-8"):
                 (client_id, client_type) = value.decode("utf-8").split("/")
                 client = self.cabot_manager.register_client(client_id=client_id, client_type=client_type)
-                callback(client)
+                callback(0, client)
             else:
                 # old app
-                self.heartbeat_char.callback(0, value.decode("utf-8"))
+                callback(0, value.decode("utf-8"))
 
         self.chars.append(common.HeartbeatChar(self, CABOT_BLE_UUID(0x9999), extra_callback=hb_callback))
 
@@ -255,10 +255,12 @@ class CaBotBLE:
 
     async def check_queue(self):
         if not self.ready:
+            common.logger.debug("not ready")
             return
         if self.queue.empty():
+            common.logger.debug("queue is empty")
             return
-        common.logger.info("queue size = {}".format(self.queue.qsize()))
+        common.logger.debug("queue size = {}".format(self.queue.qsize()))
         (priority, uuid, data) = self.queue.get()
 
         start = time.time()
@@ -266,70 +268,99 @@ class CaBotBLE:
             total = 0
             for packet in self.make_packets(data, CHAR_WRITE_MAX_SIZE):
                 total += len(packet)
-                await self.client.write_gatt_char(uuid, packet, True)
-            common.logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
-                               total, (time.time()-start), total*8/(time.time()-start)/1024)
-            self.error_count = 0
+                char = self.service.get_characteristic(uuid)
+                if char:
+                    await self.client.write_gatt_char(char.handle, packet, True)
+                    common.logger.info("char_write %d bytes in %f seconds (%.2fKbps)",
+                                       total, (time.time()-start), total*8/(time.time()-start)/1024)
+                    self.error_count = 0
+                else:
+                    common.logger.error(f"characteristic {uuid=} is not implmented")
         except:  # noqa: E722
             self.error_count += 1
             if self.error_count > 3:
+                common.logger.info(traceback.format_exc())
+                common.logger.error("self.alive is set to False")
                 self.alive = False
             else:
                 self.queue.put((priority, uuid, data))
-                # common.logger.info(traceback.format_exc())
-                common.logger.error("check_queue got an error {}".format(self.error_count))
+                common.logger.info(traceback.format_exc())
+                common.logger.error(f"check_queue got an error {self.error_count=}")
 
     async def start(self):
-        async with BleakClient(self.device.address) as client:
-            class ClientWrapper:
-                def __init__(self, ble_manager, client):
-                    self.ble_manager = ble_manager
-                    self.client = client
+        try:
+            async with BleakClient(self.device.address) as client:
+                class ClientWrapper:
+                    def __init__(self, ble_manager, client, service):
+                        self.ble_manager = ble_manager
+                        self.client = client
+                        self.service = service
 
-                def subscribe(self, uuid, callback, indication):
-                    self.ble_manager.add_task(self._subscribe(uuid, callback, indication))
+                    def subscribe(self, uuid, callback, indication):
+                        char = self.service.get_characteristic(uuid)
+                        if char:
+                            self.ble_manager.add_task(self._subscribe(char.handle, callback, indication))
+                        else:
+                            common.logger.error(f"characteristic {uuid=} is not implemented on the device")
 
-                async def _subscribe(self, uuid, callback, indication):
-                    await self.client.start_notify(uuid, callback)
-                
-            if not client.is_connected:
-                common.logger.info("cannot connect")
-                return
-            self.device_status_char.start()
-            self.ros_status_char.start()
-            self.battery_status_char.start()
-            self.ready = True
-            self.alive = True
-            self.client = client
-            common.logger.info("connected")
-            service = client.services.get_service(CABOT_BLE_UUID(0))
-            if not service:
-                return
-            common.logger.info(f"got service {service}")
+                    async def _subscribe(self, handle, callback, indication):
+                        await self.client.start_notify(handle, callback)
 
-            wrapper = ClientWrapper(self.ble_manager, client)
-            for char in self.chars:
-                char.subscribe_to(wrapper)
+                if not client.is_connected:
+                    common.logger.info("cannot connect")
+                    return
+                self.device_status_char.start()
+                self.ros_status_char.start()
+                self.battery_status_char.start()
+                self.ready = True
+                self.alive = True
+                self.client = client
+                common.logger.info(f"connected {client=}")
+                common.logger.info(f"connected {client.services=}")
+                self.service = None
+                for s in client.services:
+                    common.logger.info(f"{s.uuid=}, {s.handle}, {s.uuid==str(CABOT_BLE_UUID(0)).lower()}")
+                    if s.uuid == str(CABOT_BLE_UUID(0)).lower():
+                        self.service = s
 
-            common.logger.info("started heart beat")
+                if not self.service:
+                    return
+
+                wrapper = ClientWrapper(self.ble_manager, client, self.service)
+                for char in self.chars:
+                    char.subscribe_to(wrapper)
+
+                common.logger.info("started heart beat")
+                try:
+                    self.version_char.notify()
+                    common.logger.info("sent version")
+                except:  # noqa: E722
+                    traceback.print_exc()
+
+                self.last_heartbeat = time.time()
+                timeout = 3.0
+                while client.is_connected and time.time() - self.last_heartbeat < timeout and self.alive:
+                    try:
+                        await asyncio.wait_for(self.check_queue(), timeout=3.0)
+                    except TimeoutError:
+                        common.logger.error('timeout to check queue')
+                    await asyncio.sleep(0.01)
+                common.logger.info("client maybe disconnected")
             try:
-                self.version_char.notify()
-                common.logger.info("sent version")
-            except:  # noqa: E722
-                traceback.print_exc()
-
-            self.last_heartbeat = time.time()
-            timeout = 3.0
-            while client.is_connected and time.time() - self.last_heartbeat < timeout and self.alive:
-                await self.check_queue()
-                await asyncio.sleep(0.01)
-            common.logger.info("client maybe disconnected")
-        self.stop()
+                common.logger.info("client disconnecting")
+                await asyncio.wait_for(client.disconnect(), timeout=5.0)
+            except TimeoutError:
+                common.logger.error('timeout to disconnect from client')
+            self.stop()
+        except:  # noqa
+            self.stop()
+            common.logger.error(traceback.format_exc())
 
     def req_stop(self):
         self.alive = False
 
     def stop(self):
+        common.logger.info("stop")
         self.alive = False
         self.ready = False
         self.ble_manager.on_terminate(self)
