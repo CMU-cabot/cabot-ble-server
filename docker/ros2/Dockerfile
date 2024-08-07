@@ -50,7 +50,6 @@ WORKDIR $HOME/ros2_ws
 COPY --from=cabot_src ./docker/ros2/ros_entrypoint.sh /ros_entrypoint.sh
 
 COPY --from=cabot_src ./cabot_app_server ./src/cabot_app_server
-COPY --from=cabot_src ./power_controller_ace ./src/power_controller_ace
 COPY --from=cabot_src ./docker/ros2/launch.sh /launch.sh
 COPY --from=cabot_src ./script ./script
 
