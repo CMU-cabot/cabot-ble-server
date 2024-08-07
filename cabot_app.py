@@ -156,8 +156,7 @@ class AppClient():
     ALIVE_THRESHOLD = 3.0
 
     def __init__(self, id):
-        self.id = id
-        self.address = None
+        self.client_id = id
         self.type = None
         self.last_updated = time.time()
 
@@ -166,7 +165,7 @@ class AppClient():
         return time.time() - self.last_updated < AppClient.ALIVE_THRESHOLD
 
     def __str__(self):
-        return f"AppClient: address={self.address}, type={self.type}"
+        return f"AppClient: client_id={self.client_id}, type={self.type}"
 
 class CaBotManager(BatteryDriverDelegate):
     def __init__(self, jetson_poweroff_commands=None):
@@ -301,17 +300,17 @@ class CaBotManager(BatteryDriverDelegate):
     def cabot_battery_status(self):
         return self._battery_status
 
-    def register_client(self, id, address=None, client_type=None):
-        if id is None:
+    def register_client(self, client_id=None, client_type=None):
+        if client_id is None:
             return
-        client = AppClient(id)
-        if id in self._client_map:
-            client = self._client_map[id]
+        client = AppClient(client_id)
+        if client_id in self._client_map:
+            client = self._client_map[client_id]
         else:
-            self._client_map[id] = client
+            self._client_map[client_id] = client
         client.last_updated = time.time()
-        if address is not None and client.address is None:
-            client.address = address
+        if client_id is not None and client.client_id is None:
+            client.client_id = client_id
             common.logger.info(client)
         if client_type is not None and client.type is None:
             client.type = client_type
