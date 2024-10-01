@@ -4,6 +4,10 @@ Description = CaBot BLE Server
 [Service]
 ExecStart = /opt/cabot-ble-server/launch.sh
 Restart = always
+RestartSec=1s
+StartLimitBurst=5
+StartLimitInterval=10s
+
 WorkingDirectory = /opt/cabot-ble-server
 Type = simple
 
