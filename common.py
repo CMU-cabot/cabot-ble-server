@@ -40,6 +40,7 @@ from diagnostic_msgs.msg import DiagnosticArray
 from rosidl_runtime_py.convert import message_to_ordereddict
 from cabot_ace.cabot_ace_battery_driver import BatteryStatus
 
+from sensor_msgs.msg import BatteryState
 from mf_localization_msgs.srv import RestartLocalization
 from cabot_msgs.srv import Speak
 from cabot_msgs.msg import Log
@@ -464,15 +465,15 @@ class CabotNode_Pub(Node):
         self.cabot_event_pub = self.create_publisher(String, '/cabot/event', 5)
         self.ble_hb_topic = self.create_publisher(String, '/cabot/ble_heart_beat', 5)
         self.activity_log_pub = self.create_publisher(Log, '/cabot/activity_log', 5)
-        self.battery_pub = self.create_publisher(Int16, '/cabot/battery_capacity', 10)
-        self.timer = self.create_timer(5.0, self.battery_capacity_pub)
+        self.battery_pub = self.create_publisher(BatteryState, '/battery_state', 10)
+        self.timer = self.create_timer(5.0, self.battery_state_pub)
 
-    def battery_capacity_pub(self):
+    def battery_state_pub(self):
         battery_status = BatteryStatus()
-        battery_capacity_msg = Int16()
-        battery_capacity_msg.data = battery_status.battery_capacity
-        self.battery_pub.publish(battery_capacity_msg)
-        self.get_logger().info(f'Battery capacity: {battery_capacity_msg.data}%')
+        battery_state_msg = BatteryState()
+        battery_state_msg.percentage = float(battery_status.battery_capacity)
+        self.battery_pub.publish(battery_state_msg)
+        self.get_logger().info(f'Battery capacity: {battery_state_msg.percentage}%')
 
     def cabot_pub_event(self, msg):
         self.cabot_event_pub.publish(msg)
