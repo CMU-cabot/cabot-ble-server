@@ -32,6 +32,7 @@ import sys
 from rosidl_runtime_py.convert import message_to_ordereddict
 
 import rclpy
+from rclpy.node import Node
 
 import common
 import ble
@@ -41,6 +42,7 @@ from cabot import util
 from cabot_ace import BatteryDriverNode, BatteryDriver, BatteryDriverDelegate
 from cabot_log_report import LogReport
 from cabot_msgs.srv import Speak
+from sensor_msgs.msg import BatteryState
 
 MTU_SIZE = 2**10  # could be 2**15, but 2**10 is enough
 CHAR_WRITE_MAX_SIZE = 512  # should not be exceeded this value
@@ -167,8 +169,9 @@ class AppClient():
     def __str__(self):
         return f"AppClient: client_id={self.client_id}, type={self.type}"
 
-class CaBotManager(BatteryDriverDelegate):
+class CaBotManager(Node, BatteryDriverDelegate):
     def __init__(self, jetson_poweroff_commands=None):
+        super().__init__('cabot_manager')
         self._device_status = DeviceStatus()
         self._cabot_system_status = SystemStatus()
         self._battery_status = None
@@ -180,6 +183,8 @@ class CaBotManager(BatteryDriverDelegate):
         self.run_count = 0
         self._jetson_poweroff_commands = jetson_poweroff_commands
         self._client_map = {}
+        self.battery_pub = self.create_publisher(BatteryState, 'battery_state', 10)
+        self.timer = self.create_timer(5.0, self.cabot_battery_status)
 
     def run(self, start=False):
         self.start_flag=start
@@ -197,6 +202,14 @@ class CaBotManager(BatteryDriverDelegate):
             common.logger.info("shutdown requested")
             self.stop()
             self.poweroffPC()
+        battery_state_msg = BatteryState()
+        if hasattr(status, 'battery_capacity') and status.battery_capacity is not None:
+            battery_state_msg.percentage = float(status.battery_capacity)
+        else:
+            #self.get_logger().error(f'battery_capacity is not available in BatteryStatus. {status}')
+            return
+        self.battery_pub.publish(battery_state_msg)
+        #self.get_logger().info(f'Battery capacity: {battery_state_msg.percentage}%')
     # BatteryDriverDelegate end
 
     def add_log_request(self, request, callback):
