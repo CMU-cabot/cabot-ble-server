@@ -204,7 +204,7 @@ class CaBotManager(Node, BatteryDriverDelegate):
             self.poweroffPC()
         battery_state_msg = BatteryState()
         if hasattr(status, 'battery_capacity') and status.battery_capacity is not None:
-            battery_state_msg.percentage = float(status.battery_capacity)
+            battery_state_msg.percentage = float(status.battery_capacity) / 100
         else:
             #self.get_logger().error(f'battery_capacity is not available in BatteryStatus. {status}')
             return
