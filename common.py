@@ -42,6 +42,7 @@ from rosidl_runtime_py.convert import message_to_ordereddict
 from mf_localization_msgs.srv import RestartLocalization
 from cabot_msgs.srv import Speak
 from cabot_msgs.msg import Log
+from std_srvs.srv import Trigger
 
 from cabot import util
 from cabot.event import BaseEvent
@@ -481,6 +482,7 @@ class CabotNode_Sub(Node):
         self.cabot_event_sub = self.create_subscription(String, '/cabot/event', self.cabot_event_callback, 10)
         self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', self.cabot_touch_callback, 10)
         self.restart_localization_client = self.create_client(RestartLocalization, "/restart_localization")
+        self.reload_xhci_pci = self.create_service(Trigger, "/reload_xhci_pci", self.reload_callback)
 
     def diagnostic_agg_callback(self, msg):
         global diagnostics
@@ -516,6 +518,13 @@ class CabotNode_Sub(Node):
 
     def cabot_touch_callback(self, msg):
         message_buffer.append(msg.data)
+
+    def reload_callback(self, req, res):
+        logger.info("reload_callback is called")
+        result = subprocess.run("./recover_usb.sh", capture_output=True, text=True)
+        logger.info("reload_callback result is ", result.stdout)
+        res.success = True
+        return res
 
 class CabotNode_Common():
     def __init__(self):

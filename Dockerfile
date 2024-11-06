@@ -146,5 +146,6 @@ COPY tcp.py $HOME/tcp.py
 COPY entrypoint.sh /entrypoint.sh
 COPY cabot-device-check/check_device_status.sh $HOME/cabot-device-check/check_device_status.sh
 COPY cabot-device-check/locale $HOME/locale
+COPY recover_usb.sh $HOME/recover_usb.sh
 
 ENTRYPOINT [ "/ros_entrypoint.sh" ]
