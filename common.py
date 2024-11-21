@@ -191,8 +191,8 @@ class CabotManageChar(BLESubChar):
             msg.data = str(event)
             cabot_node_common.pub_node.cabot_event_pub.publish(msg)
         if value.startswith("handleside"):
-            lang = value[5:]
-            event = NavigationEvent(subtype="handleside", param=lang)
+            handleside = value[11:]
+            event = NavigationEvent(subtype="handleside", param=handleside)
             msg = String()
             msg.data = str(event)
             cabot_node_common.pub_node.cabot_event_pub.publish(msg)
