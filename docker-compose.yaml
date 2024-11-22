@@ -60,8 +60,8 @@ services:
       - CABOT_JETSON_CONFIG
       - CABOT_ID_DIR=/home/developer/.ssh
       - CABOT_ID_FILE
-      - CABOT_NO_BLE
-      - CABOT_NO_TCP
+      - CABOT_USE_BLE
+      - CABOT_USE_TCP
       - LIDAR_IF
       - LIDAR_IP
       - ARPSCAN_LIDAR

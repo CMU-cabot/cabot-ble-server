@@ -405,9 +405,9 @@ async def main():
     adapter_name = os.environ['CABOT_BLE_ADAPTER'] if 'CABOT_BLE_ADAPTER' in os.environ else "hci0"
     start_at_launch = (os.environ['CABOT_START_AT_LAUNCH'] == "1") if 'CABOT_START_AT_LAUNCH' in os.environ else False
 
-    no_ble = os.environ['CABOT_NO_BLE']=='true' if 'CABOT_NO_BLE' in os.environ else False
-    no_tcp = os.environ['CABOT_NO_TCP']=='true' if 'CABOT_NO_TCP' in os.environ else False
-    common.logger.info(f"No BLE = {no_ble}, No TCP = {no_tcp}")
+    use_ble = os.environ.get('CABOT_USE_BLE', False)
+    use_tcp = os.environ.get('CABOT_USE_TCP', True)
+    common.logger.info(f"Use BLE = {use_ble}, Use TCP = {use_tcp}")
 
     cabot_manager = CaBotManager()
     jetson_poweroff_commands = None
@@ -445,7 +445,7 @@ async def main():
     cabot_manager.run(start=start_at_launch)
 
     result = subprocess.call(["grep", "-E", "^ControllerMode *= *le$", "/etc/bluetooth/main.conf"])
-    if result != 0:
+    if result != 0 and use_ble:
         common.logger.error("Please check your /etc/bluetooth/main.conf")
         line = subprocess.check_output(["grep", "-E", "ControllerMode", "/etc/bluetooth/main.conf"])
         common.logger.error("Your ControllerMode is '{}'".format(line.decode('utf-8').replace('\n', '')))
@@ -471,7 +471,7 @@ async def main():
 
     global tcp_server_thread
     try:
-        if not no_tcp:
+        if use_tcp:
             if tcp_server is None:
                 tcp_server = tcp.CaBotTCP(cabot_manager=cabot_manager)
                 common.add_event_handler(tcp_server)
@@ -481,7 +481,7 @@ async def main():
                 else:
                     tcp_server.start()
 
-        if not no_ble:
+        if use_ble:
             if ble_manager is not None:
                 common.remove_event_handler(ble_manager)
             ble_manager = ble.BLEDeviceManager(adapter_name=adapter_name, cabot_name=cabot_name, cabot_manager=cabot_manager)

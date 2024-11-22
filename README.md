@@ -24,7 +24,8 @@ docker-compose build --build-arg UID=$UID
 CABOT_NAME                  # cabot name
 CABOT_BLE_ADAPTER           # default is 'hci0'
 CABOT_START_AT_LAUNCH       # default is 0, launch cabot system if 1 at start up
-CABOT_NO_BLE                # default is false, do not use BLE if true
+CABOT_USE_BLE               # default is false, use BLE if true
+CABOT_USE_TCP               # default is true,  use TCP if true
 NO_BUILD                    # default is false, do not build when launch if true
 ```
 
