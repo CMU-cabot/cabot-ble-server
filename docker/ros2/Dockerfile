@@ -182,5 +182,6 @@ COPY --from=cabot_src ./docker/ros2/ros_entrypoint.sh /ros_entrypoint.sh
 COPY --from=build $HOME/ros2_ws/install $HOME/ros2_ws/install
 COPY --from=cabot_src ./docker/ros2/launch.sh /launch.sh
 COPY --from=cabot_src ./script ./script
+COPY --from=cabot_src ./cabot-device-check /opt/cabot-device-check
 
 ENTRYPOINT [ "/ros_entrypoint.sh" ]
