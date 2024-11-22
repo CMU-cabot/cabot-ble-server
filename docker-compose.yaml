@@ -1,5 +1,6 @@
 services:
   cabot-app-server:
+    image: cmucal/cabot-app-server
     build:
       context: ./docker/ros2
       additional_contexts:
