@@ -1,5 +1,5 @@
 services:
-  ble:
+  cabot-app-server:
     build:
       context: ./docker/ros2
       additional_contexts:
@@ -8,7 +8,7 @@ services:
         - BASE_IMAGE=${BASE_IMAGE:-cabot-base}
       x-bake:
         tags:
-          - ${REGISTRY:-cmucal}/cabot-ble-server
+          - ${REGISTRY:-cmucal}/cabot-app-server
         platforms:
           - linux/amd64
           - linux/arm64

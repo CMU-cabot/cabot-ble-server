@@ -7,3 +7,4 @@ Flask
 python-socketio
 simple-websocket
 bleak
+setuptools==59.6.0

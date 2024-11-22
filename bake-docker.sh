@@ -139,5 +139,13 @@ if [[ $local -eq 1 ]]; then
         com="docker image tag localhost:9092/$tag cmucal/$tag"
         echo $com
         eval $com
+
+        # this is for docker compose run for development
+        if [[ $local -eq 1 ]]; then
+            prefix=$(basename `pwd`)
+            com="docker image tag localhost:9092/$tag ${prefix}-${tag}"
+            echo $com
+            eval $com
+        fi
     done
 fi

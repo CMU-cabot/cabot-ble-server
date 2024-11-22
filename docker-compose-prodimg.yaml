@@ -1,6 +1,6 @@
 services:
-  ble:
-    image: cmucal/cabot-ble-server
+  cabot-app-server:
+    image: cmucal/cabot-app-server
     volumes:
 # device, bluetooth
       - /dev:/dev
