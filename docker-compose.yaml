@@ -1,4 +1,5 @@
 services:
+  # build
   cabot-app-server:
     image: cmucal/cabot-app-server
     build:
@@ -40,11 +41,6 @@ services:
 # for log report
       - /opt/report-submitter:/opt/report-submitter
       - /opt/cabot/docker/home/.ros/log:/opt/cabot/docker/home/.ros/log
-# source code
-      - ./docker/home:/home/developer
-      - ./cabot_app_server:/home/developer/ros2_ws/src/cabot_app_server      
-      - ./power_controller_ace:/home/developer/ros2_ws/src/power_controller_ace
-      - ./script:/home/developer/ros2_ws/script
     environment:
       - CABOT_NAME
       - CABOT_BLE_ADAPTER
@@ -77,3 +73,25 @@ services:
 # device, bluetooth
     network_mode: host
     command: /launch.sh app
+    profiles:
+      - build
+
+  # dev
+  cabot-app-server-dev:
+    extends:
+      service: cabot-app-server
+    volumes:
+# source code
+      - ./docker/home:/home/developer
+      - ./cabot_app_server:/home/developer/ros2_ws/src/cabot_app_server      
+      - ./power_controller_ace:/home/developer/ros2_ws/src/power_controller_ace
+      - ./script:/home/developer/ros2_ws/script
+    profiles:
+      - dev
+
+  # prodimg
+  cabot-app-server-prod:
+    extends:
+      service: cabot-app-server
+    profiles:
+      - prod
