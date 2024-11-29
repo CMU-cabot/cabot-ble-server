@@ -21,7 +21,7 @@ function help {
 }
 
 development=0
-dcfile=docker-compose-prodimg.yaml
+dcfile=docker-compose.yaml
 
 while getopts "hd" arg; do
     case $arg in
@@ -31,7 +31,6 @@ while getopts "hd" arg; do
         ;;
     d)
         development=1
-        dcfile=docker-compose.yaml
         ;;
     esac
 done
@@ -41,13 +40,15 @@ log_name=${log_prefix}_`date +%Y-%m-%d-%H-%M-%S`
 
 source $scriptdir/.env
 
+profile=prod
 if [[ $development -eq 1 ]]; then
+    profile=dev
     echo "This is development environment, building the workspace"
-    com="docker compose -f $dcfile run --rm cabot-app-server /launch.sh build"
+    com="docker compose -f $dcfile --profile $profile run --rm cabot-app-server-dev /launch.sh build"
     echo $com
     eval $com
 fi
 
-com="docker compose -f $dcfile up 2>&1 | tee log/$log_name.log"
+com="docker compose -f $dcfile --profile $profile up 2>&1 | tee log/$log_name.log"
 echo $com
 eval $com
