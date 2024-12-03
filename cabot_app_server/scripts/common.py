@@ -193,6 +193,12 @@ class CabotManageChar(BLESubChar):
             msg = String()
             msg.data = str(event)
             cabot_node_common.pub_node.cabot_event_pub.publish(msg)
+        if value.startswith("touchmode"):
+            touchmode = value[10:]
+            event = NavigationEvent(subtype="touchmode", param=touchmode)
+            msg = String()
+            msg.data = str(event)
+            cabot_node_common.pub_node.cabot_event_pub.publish(msg)
         if value.startswith("restart_localization"):
             req = RestartLocalization.Request()
 
@@ -337,7 +343,7 @@ class EventChars(BLENotifyChar):
         if event.type != NavigationEvent.TYPE:
             return
 
-        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage", "gethandleside"]:
+        if event.subtype not in ["next", "arrived", "content", "sound", "getlanguage", "gethandleside", "gettouchmode"]:
             return
         req = {
             'request_id': request_id,
