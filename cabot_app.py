@@ -81,25 +81,25 @@ class DeviceStatus:
             common.logger.info(traceback.format_exc())
 
     def set_clients(self, clients):
-        if len(clients) == 0:
+        device = {
+            'type': "User App",
+            'model': "cabot-ios-app",
+            'level': "Error",
+            'message': "disconnected",
+            'values': []
+        }
+        for client in clients:
+            if not client.connected:
+                continue
             device = {
                 'type': "User App",
                 'model': "cabot-ios-app",
-                'level': "Error",
-                'message': "disconnected",
+                'level': "OK",
+                'message': "connected",
                 'values': []
             }
-            self.devices.append(device)
-        else:
-            client = clients[0]
-            device = {
-                'type': "User App",
-                'model': "cabot-ios-app",
-                'level': "OK" if client.connected else "Error",
-                'message': "connected" if client.connected else "disconnected",
-                'values': []
-            }
-            self.devices.append(device)
+            break
+        self.devices.append(device)
 
     @property
     def json(self):
