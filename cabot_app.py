@@ -81,25 +81,25 @@ class DeviceStatus:
             common.logger.info(traceback.format_exc())
 
     def set_clients(self, clients):
-        if len(clients) == 0:
+        device = {
+            'type': "User App",
+            'model': "cabot-ios-app",
+            'level': "Error",
+            'message': "disconnected",
+            'values': []
+        }
+        for client in clients:
+            if not client.connected:
+                continue
             device = {
                 'type': "User App",
                 'model': "cabot-ios-app",
-                'level': "Error",
-                'message': "disconnected",
+                'level': "OK",
+                'message': "connected",
                 'values': []
             }
-            self.devices.append(device)
-        else:
-            client = clients[0]
-            device = {
-                'type': "User App",
-                'model': "cabot-ios-app",
-                'level': "OK" if client.connected else "Error",
-                'message': "connected" if client.connected else "disconnected",
-                'values': []
-            }
-            self.devices.append(device)
+            break
+        self.devices.append(device)
 
     @property
     def json(self):
@@ -452,7 +452,7 @@ async def main():
         battery_thread_node = threading.Thread(target=battery_driver_node.start)
         battery_thread_node.start()
 
-    try:
+    if not no_ble:
         result = subprocess.call(["grep", "-E", "^ControllerMode *= *le$", "/etc/bluetooth/main.conf"])
         if result != 0:
             common.logger.error("Please check your /etc/bluetooth/main.conf")
@@ -460,8 +460,6 @@ async def main():
             common.logger.error("Your ControllerMode is '{}'".format(line.decode('utf-8').replace('\n', '')))
             common.logger.error("Please use ./setup_bluetooth_conf.sh to configure LE mode")
             sys.exit(result)
-    except:
-        pass
 
     global tcp_server
     global ble_manager
