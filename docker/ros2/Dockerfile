@@ -29,6 +29,13 @@ RUN cd /tmp && \
 
 FROM ${FROM_IMAGE} AS build
 
+RUN apt update && \
+	apt install -q -y --no-install-recommends \
+	gosu \
+	&& \
+	apt clean && \
+	rm -rf /var/lib/apt/lists/*
+
 COPY --from=cache /opt/custom_ws/install /opt/custom_ws/install
 
 ARG USERNAME=developer
@@ -43,9 +50,9 @@ RUN useradd -m $USERNAME && \
     usermod  --uid $UID $USERNAME && \
     groupmod --gid $UID $USERNAME
 
-USER $USERNAME
 ENV HOME /home/$USERNAME
 WORKDIR $HOME/ros2_ws
+RUN chown $USERNAME:$USERNAME $HOME/ros2_ws
 
 COPY --from=cabot_src ./docker/ros2/ros_entrypoint.sh /ros_entrypoint.sh
 
@@ -133,6 +140,7 @@ RUN apt update && \
 	bluetooth \
 	bluez \
 	bluez-tools \
+	gosu \
 	python3 \
 	python3-dbus \
 	python3-gi \
@@ -173,15 +181,16 @@ RUN useradd -m $USERNAME && \
         usermod  --uid $UID $USERNAME && \
 	groupmod --gid $UID $USERNAME
 
-USER $USERNAME
 ENV HOME /home/$USERNAME
+
 WORKDIR $HOME/ros2_ws
+RUN chown $USERNAME:$USERNAME $HOME/ros2_ws
 
 COPY --from=cabot_src ./docker/ros2/ros_entrypoint.sh /ros_entrypoint.sh
 
-COPY --from=build $HOME/ros2_ws/install $HOME/ros2_ws/install
+COPY --chown=$USERNAME:$USERNAME --from=build $HOME/ros2_ws/install $HOME/ros2_ws/install
 COPY --from=cabot_src ./docker/ros2/launch.sh /launch.sh
-COPY --from=cabot_src ./script ./script
+COPY --chown=$USERNAME:$USERNAME --from=cabot_src ./script ./script
 COPY --from=cabot_src ./cabot-device-check /opt/cabot-device-check
 
 ENTRYPOINT [ "/ros_entrypoint.sh" ]

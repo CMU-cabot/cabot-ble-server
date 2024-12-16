@@ -42,6 +42,9 @@ services:
       - /opt/report-submitter:/opt/report-submitter
       - /opt/cabot/docker/home/.ros/log:/opt/cabot/docker/home/.ros/log
     environment:
+      - HOST_UID
+      - HOST_GID
+      - HOST_TZ
       - CABOT_NAME
       - CABOT_BLE_ADAPTER
       - CABOT_START_AT_LAUNCH
