@@ -81,6 +81,13 @@ class LogReport:
             return (items[0], items[1], items[2], "\n".join(items[3:]))
         return (0, 0, "", "")
 
+    def getDuration(self, name):
+        command = ["sudo", "-E", "/opt/report-submitter/get_duration.sh", name]
+        result = subprocess.run(command, capture_output=True, text=True, env=os.environ.copy()).stdout
+        if not result:
+            result = 0
+        return result
+
     def response_log(self, request_json, callback):
         try:
             request = json.loads(request_json)
@@ -127,7 +134,20 @@ class LogReport:
             title = request["title"]
             detail = request["detail"]
             name = request["log_name"]
+            duration = self.getDuration(name)
             self.makeReport(title, detail, name)
+            response["log"] = {
+                "name": name,
+                "nanoseconds": duration
+            }
+        elif request_type == "appLog":
+            app_logs = request["app_log"]
+            log_name = request["log_name"]
+            file_directory = "/opt/cabot/docker/home/.ros/log/"
+            for key, value in app_logs.items():
+                file_path = file_directory + log_name + "/" + key
+                with open(file_path, "w") as f:
+                    f.write(value)
             self.submitReport()
 
         callback(response)
