@@ -37,11 +37,12 @@ from rclpy.clock import Clock, ClockType
 from rclpy.time import Time
 from std_msgs.msg import String, Int16
 from diagnostic_msgs.msg import DiagnosticArray
+from sensor_msgs.msg import Image
 from rosidl_runtime_py.convert import message_to_ordereddict
 
 from mf_localization_msgs.srv import RestartLocalization
 from cabot_msgs.srv import Speak
-from cabot_msgs.msg import Log
+from cabot_msgs.msg import Log, PoseLog
 
 from cabot import util
 from cabot.event import BaseEvent
@@ -70,6 +71,9 @@ if DEBUG:
     set_debug_mode()
 
 message_buffer = deque(maxlen=10)
+
+last_camera_image: Image = None
+last_location: PoseLog = None
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -118,7 +122,25 @@ def send_touch():
     for handler in event_handlers:
         handler.handleTouchCallback(message)
 
+@util.setInterval(1)
+def send_camera_image():
+    global last_camera_image
+    if last_camera_image is not None:
+        image, last_camera_image = last_camera_image, None
+        for handler in event_handlers:
+            handler.handleCameraImageCallback(image)
+
+@util.setInterval(1)
+def send_location():
+    global last_location
+    if last_location is not None:
+        location, last_location = last_location, None
+        for handler in event_handlers:
+            handler.handleLocationCallback(location)
+
 send_touch()
+send_camera_image()
+send_location()
 
 class BLESubChar:
     def __init__(self, owner, uuid, indication=False, extra_callback=None):
@@ -396,6 +418,26 @@ class CabotLogResponseChar(BLENotifyChar):
         self.send_text(self.uuid, jsonText)
 
 
+class CameraImageChars(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, None)
+        self.uuid = uuid
+
+    def handleLCameraImageCallback(self, msg):
+        base64Text = "TODO convert ROS2 image into base64"
+        self.send_text(self.uuid, base64Text)
+
+
+class LocationChars(BLENotifyChar):
+    def __init__(self, owner, uuid):
+        super().__init__(owner, None)
+        self.uuid = uuid
+
+    def handleLocationCallback(self, msg):
+        jsonText = f"TODO convert {msg}"
+        self.send_text(self.uuid, jsonText)
+
+
 class DeviceStatus:
     def __init__(self):
         self.level = "Unknown"
@@ -498,6 +540,8 @@ class CabotNode_Sub(Node):
         self.cabot_event_sub = self.create_subscription(String, '/cabot/event', self.cabot_event_callback, 10)
         self.cabot_touch_sub = self.create_subscription(Int16, '/cabot/touch', self.cabot_touch_callback, 10)
         self.restart_localization_client = self.create_client(RestartLocalization, "/restart_localization")
+        self.camera_image_sub = self.create_subscription(Image, '/camera/color/image_raw', self.camera_image_callback, 10)
+        self.location_sub = self.create_subscription(PoseLog, '/cabot/pose_log', self.location_callback, 10)
 
     def diagnostic_agg_callback(self, msg):
         global diagnostics
@@ -533,6 +577,14 @@ class CabotNode_Sub(Node):
 
     def cabot_touch_callback(self, msg):
         message_buffer.append(msg.data)
+
+    def camera_image_callback(self, msg):
+        global last_camera_image
+        last_camera_image = msg
+
+    def location_callback(self, msg):
+        global last_location
+        last_location = msg
 
 class CabotNode_Common():
     def __init__(self):
