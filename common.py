@@ -125,16 +125,16 @@ def send_touch():
 @util.setInterval(1)
 def send_camera_image():
     global last_camera_image
-    if last_camera_image is not None:
-        image, last_camera_image = last_camera_image, None
+    image, last_camera_image = last_camera_image, None
+    if image is not None:
         for handler in event_handlers:
             handler.handleCameraImageCallback(image)
 
 @util.setInterval(1)
 def send_location():
     global last_location
-    if last_location is not None:
-        location, last_location = last_location, None
+    location, last_location = last_location, None
+    if location is not None:
         for handler in event_handlers:
             handler.handleLocationCallback(location)
 
